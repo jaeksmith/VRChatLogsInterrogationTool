@@ -219,7 +219,7 @@
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                 <TextBlock Text="Auto-scroll" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <ComboBox Width="150" ItemsSource="{Binding AutoScrollOptions}" SelectedItem="{Binding AutoScrollMode, UpdateSourceTrigger=PropertyChanged}" />
+                                <ComboBox Width="150" Foreground="#101820" ItemsSource="{Binding AutoScrollOptions}" SelectedItem="{Binding AutoScrollMode, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                         </DockPanel>
                     </StackPanel>

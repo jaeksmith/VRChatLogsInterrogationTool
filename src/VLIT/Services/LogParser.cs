@@ -7,6 +7,8 @@ namespace VLIT.Services;
 
 public static partial class LogParser
 {
+    public const long SortStrideTicks = 1000L;
+
     private static readonly Regex FileTimestampRegex = new(
         @"output_log_(?<stamp>\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.txt$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -132,7 +134,7 @@ public static partial class LogParser
             Message = pending.Message,
             ContinuationText = pending.Continuation.ToString(),
             SourceColor = file.Color,
-            SortTicks = pending.Timestamp.Ticks + (sequence * 10L)
+            SortTicks = pending.Timestamp.Ticks + (sequence * SortStrideTicks)
         });
     }
 

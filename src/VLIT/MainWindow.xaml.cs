@@ -50,6 +50,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private List<TimelineEntry> _searchMatches = [];
     private TimelineEntry? _dragStartEntry;
     private bool _dragSelectionIsAdditive;
+    private TimelineEntry? _lastSelectionAnchor;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -529,6 +530,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 {
                     File.Delete(file.FilePath);
                 }
+
+                LogFiles.Remove(file);
+                _entriesByFile.Remove(file.FileKey);
+                _settings.FileStates.Remove(file.FileKey);
+                _hiddenLineKeys.RemoveWhere(key => key.StartsWith(file.FileKey + ":", StringComparison.OrdinalIgnoreCase));
             }
             catch (Exception ex)
             {
@@ -536,6 +542,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         }
 
+        ApplyTimelineFilters();
+        SaveSettings();
         await RefreshAllAsync();
     }
 
@@ -724,6 +732,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (IsShiftDown())
+        {
+            SelectTimelineRange(_lastSelectionAnchor ?? TimelineEntries.FirstOrDefault(e => e.IsSelectedForCopy) ?? entry, entry, IsControlDown());
+            _lastSelectionAnchor ??= entry;
+            e.Handled = true;
+            return;
+        }
+
         _dragSelectionIsAdditive = IsControlDown();
         if (!_dragSelectionIsAdditive)
         {
@@ -734,6 +750,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _dragStartEntry = entry;
         _dragSelectionValue = true;
         entry.IsSelectedForCopy = _dragSelectionValue;
+        _lastSelectionAnchor = entry;
         Mouse.Capture(sender as IInputElement);
         e.Handled = true;
     }
@@ -764,6 +781,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             sender is CheckBox checkBox)
         {
             entry.IsSelectedForCopy = checkBox.IsChecked == true;
+            if (entry.IsSelectedForCopy)
+            {
+                _lastSelectionAnchor = entry;
+            }
         }
     }
 
@@ -849,6 +870,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static bool IsControlDown()
     {
         return Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+    }
+
+    private static bool IsShiftDown()
+    {
+        return Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
     }
 
     private void ToggleChecklist_Click(object sender, RoutedEventArgs e)
@@ -1386,7 +1412,7 @@ ordered: Multiplayer smoke test
         }
 
         var timestamp = anchor?.Timestamp ?? DateTime.Now;
-        var sortTicks = (anchor?.SortTicks ?? timestamp.Ticks) + 1;
+        var sortTicks = GetMarkerSortTicksAfter(anchor, timestamp);
         _markers.Add(new MarkerItem
         {
             Text = text.Trim(),
@@ -1402,6 +1428,29 @@ ordered: Multiplayer smoke test
         }
 
         return true;
+    }
+
+    private long GetMarkerSortTicksAfter(TimelineEntry? anchor, DateTime timestamp)
+    {
+        if (anchor is null)
+        {
+            return timestamp.Ticks;
+        }
+
+        var anchorSort = anchor.SortTicks;
+        var nextSort = TimelineEntries
+            .Where(e => e.SortTicks > anchorSort)
+            .OrderBy(e => e.SortTicks)
+            .Select(e => e.SortTicks)
+            .FirstOrDefault();
+
+        if (nextSort <= anchorSort)
+        {
+            return anchorSort + 1;
+        }
+
+        var gap = nextSort - anchorSort;
+        return gap > 1 ? anchorSort + Math.Max(1, gap / 2) : anchorSort + 1;
     }
 
     private void InsertPromptedMarker(TimelineEntry? anchor)
