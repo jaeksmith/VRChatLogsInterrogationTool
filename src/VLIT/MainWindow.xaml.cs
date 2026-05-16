@@ -1,0 +1,1877 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.IO;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Threading;
+using VLIT.Services;
+
+namespace VLIT;
+
+public partial class MainWindow : Window, INotifyPropertyChanged
+{
+    private readonly SettingsStore _settingsStore = new();
+    private readonly Dictionary<string, List<TimelineEntry>> _entriesByFile = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _hiddenLineKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<MarkerItem> _markers = [];
+    private readonly List<FileSystemWatcher> _watchers = [];
+    private readonly DispatcherTimer _refreshDebounce = new();
+    private readonly DispatcherTimer _parseDebounce = new();
+    private AppSettingsState _settings = new();
+    private bool _isLoading;
+    private bool _isRefreshing;
+    private bool _isDraggingTimelineSelection;
+    private bool _dragSelectionValue;
+    private bool _isEvaluatingChecklist;
+    private string _reviewedLineKey = string.Empty;
+    private string _statusText = "Ready";
+    private string _searchStatusText = "0 matches";
+    private int _loadedEntryCount;
+    private int _visibleEntryCount;
+    private bool _showUnfilteredLines;
+    private bool _showHiddenLines;
+    private bool _showMarkers = true;
+    private bool _showLevelError = true;
+    private bool _showLevelWarning = true;
+    private bool _showLevelDebug = true;
+    private bool _showLevelLog = true;
+    private bool _showLevelOther = true;
+    private string _autoScrollMode = "Follow If At Bottom";
+    private string _searchText = string.Empty;
+    private bool _searchUseRegex;
+    private string _checklistText = string.Empty;
+    private int _searchIndex = -1;
+    private List<TimelineEntry> _searchMatches = [];
+    private TimelineEntry? _dragStartEntry;
+    private bool _dragSelectionIsAdditive;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public ObservableCollection<SourceDirectoryItem> Sources { get; } = [];
+    public ObservableCollection<LogFileItem> LogFiles { get; } = [];
+    public ObservableCollection<RegexFilterItem> Filters { get; } = [];
+    public ObservableCollection<TimelineEntry> TimelineEntries { get; } = [];
+    public ObservableCollection<ChecklistNode> ChecklistItems { get; private set; } = [];
+    public IReadOnlyList<string> AutoScrollOptions { get; } = ["Off", "Always On", "Follow If At Bottom"];
+
+    public string StatusText
+    {
+        get => _statusText;
+        set => SetProperty(ref _statusText, value);
+    }
+
+    public string SearchStatusText
+    {
+        get => _searchStatusText;
+        set => SetProperty(ref _searchStatusText, value);
+    }
+
+    public int LoadedEntryCount
+    {
+        get => _loadedEntryCount;
+        set => SetProperty(ref _loadedEntryCount, value);
+    }
+
+    public int VisibleEntryCount
+    {
+        get => _visibleEntryCount;
+        set => SetProperty(ref _visibleEntryCount, value);
+    }
+
+    public bool ShowUnfilteredLines
+    {
+        get => _showUnfilteredLines;
+        set
+        {
+            if (SetProperty(ref _showUnfilteredLines, value))
+            {
+                ApplyTimelineFilters();
+                SaveSettings();
+            }
+        }
+    }
+
+    public bool ShowHiddenLines
+    {
+        get => _showHiddenLines;
+        set
+        {
+            if (SetProperty(ref _showHiddenLines, value))
+            {
+                ApplyTimelineFilters();
+                SaveSettings();
+            }
+        }
+    }
+
+    public bool ShowMarkers
+    {
+        get => _showMarkers;
+        set
+        {
+            if (SetProperty(ref _showMarkers, value))
+            {
+                ApplyTimelineFilters();
+                SaveSettings();
+            }
+        }
+    }
+
+    public bool ShowLevelError
+    {
+        get => _showLevelError;
+        set
+        {
+            if (SetProperty(ref _showLevelError, value))
+            {
+                ApplyTimelineFilters();
+                SaveSettings();
+            }
+        }
+    }
+
+    public bool ShowLevelWarning
+    {
+        get => _showLevelWarning;
+        set
+        {
+            if (SetProperty(ref _showLevelWarning, value))
+            {
+                ApplyTimelineFilters();
+                SaveSettings();
+            }
+        }
+    }
+
+    public bool ShowLevelDebug
+    {
+        get => _showLevelDebug;
+        set
+        {
+            if (SetProperty(ref _showLevelDebug, value))
+            {
+                ApplyTimelineFilters();
+                SaveSettings();
+            }
+        }
+    }
+
+    public bool ShowLevelLog
+    {
+        get => _showLevelLog;
+        set
+        {
+            if (SetProperty(ref _showLevelLog, value))
+            {
+                ApplyTimelineFilters();
+                SaveSettings();
+            }
+        }
+    }
+
+    public bool ShowLevelOther
+    {
+        get => _showLevelOther;
+        set
+        {
+            if (SetProperty(ref _showLevelOther, value))
+            {
+                ApplyTimelineFilters();
+                SaveSettings();
+            }
+        }
+    }
+
+    public string AutoScrollMode
+    {
+        get => _autoScrollMode;
+        set
+        {
+            if (SetProperty(ref _autoScrollMode, value))
+            {
+                SaveSettings();
+            }
+        }
+    }
+
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (SetProperty(ref _searchText, value))
+            {
+                UpdateSearchMatches();
+                SaveSettings();
+            }
+        }
+    }
+
+    public bool SearchUseRegex
+    {
+        get => _searchUseRegex;
+        set
+        {
+            if (SetProperty(ref _searchUseRegex, value))
+            {
+                UpdateSearchMatches();
+                SaveSettings();
+            }
+        }
+    }
+
+    public string ChecklistText
+    {
+        get => _checklistText;
+        set
+        {
+            if (SetProperty(ref _checklistText, value))
+            {
+                SaveSettings();
+            }
+        }
+    }
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        DataContext = this;
+
+        _refreshDebounce.Interval = TimeSpan.FromMilliseconds(450);
+        _refreshDebounce.Tick += async (_, _) =>
+        {
+            _refreshDebounce.Stop();
+            await RefreshAllAsync();
+        };
+
+        _parseDebounce.Interval = TimeSpan.FromMilliseconds(350);
+        _parseDebounce.Tick += async (_, _) =>
+        {
+            _parseDebounce.Stop();
+            await ParseIncludedLogsAsync();
+        };
+
+        Sources.CollectionChanged += Sources_CollectionChanged;
+        Filters.CollectionChanged += Filters_CollectionChanged;
+    }
+
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        _isLoading = true;
+        _settings = _settingsStore.Load();
+
+        foreach (var sourceState in _settings.Sources)
+        {
+            var source = new SourceDirectoryItem
+            {
+                Id = string.IsNullOrWhiteSpace(sourceState.Id) ? Guid.NewGuid().ToString("N") : sourceState.Id,
+                Token = sourceState.Token,
+                Color = sourceState.Color,
+                DirectoryPath = sourceState.DirectoryPath
+            };
+            WireSource(source);
+            Sources.Add(source);
+        }
+
+        if (_settings.Filters.Count == 0)
+        {
+            AddDefaultFilters();
+        }
+        else
+        {
+            foreach (var filterState in _settings.Filters)
+            {
+                var filter = new RegexFilterItem
+                {
+                    Id = filterState.Id,
+                    Name = filterState.Name,
+                    Pattern = filterState.Pattern,
+                    Color = filterState.Color,
+                    IsEnabled = filterState.IsEnabled,
+                    IsRegex = filterState.IsRegex
+                };
+                WireFilter(filter);
+                Filters.Add(filter);
+            }
+        }
+
+        _markers.Clear();
+        _markers.AddRange(_settings.Markers);
+        _hiddenLineKeys.Clear();
+        foreach (var key in _settings.HiddenLineKeys)
+        {
+            _hiddenLineKeys.Add(key);
+        }
+
+        _reviewedLineKey = _settings.ReviewedLineKey;
+        _showUnfilteredLines = _settings.ShowUnfilteredLines;
+        _showHiddenLines = _settings.ShowHiddenLines;
+        _showMarkers = _settings.ShowMarkers;
+        _showLevelError = _settings.ShowLevelError;
+        _showLevelWarning = _settings.ShowLevelWarning;
+        _showLevelDebug = _settings.ShowLevelDebug;
+        _showLevelLog = _settings.ShowLevelLog;
+        _showLevelOther = _settings.ShowLevelOther;
+        if (!_showLevelError && !_showLevelWarning && !_showLevelDebug && !_showLevelLog && !_showLevelOther)
+        {
+            _showLevelError = true;
+            _showLevelWarning = true;
+            _showLevelDebug = true;
+            _showLevelLog = true;
+            _showLevelOther = true;
+        }
+        _autoScrollMode = string.IsNullOrWhiteSpace(_settings.AutoScrollMode) ? "Follow If At Bottom" : _settings.AutoScrollMode;
+        _searchText = _settings.SearchText;
+        _searchUseRegex = _settings.SearchUseRegex;
+        _checklistText = _settings.ChecklistText;
+        OnPropertyChanged(nameof(ShowUnfilteredLines));
+        OnPropertyChanged(nameof(ShowHiddenLines));
+        OnPropertyChanged(nameof(ShowMarkers));
+        OnPropertyChanged(nameof(ShowLevelError));
+        OnPropertyChanged(nameof(ShowLevelWarning));
+        OnPropertyChanged(nameof(ShowLevelDebug));
+        OnPropertyChanged(nameof(ShowLevelLog));
+        OnPropertyChanged(nameof(ShowLevelOther));
+        OnPropertyChanged(nameof(AutoScrollMode));
+        OnPropertyChanged(nameof(SearchText));
+        OnPropertyChanged(nameof(SearchUseRegex));
+        OnPropertyChanged(nameof(ChecklistText));
+
+        if (!string.IsNullOrWhiteSpace(ChecklistText))
+        {
+            ParseChecklist();
+        }
+
+        _isLoading = false;
+        await RefreshAllAsync();
+    }
+
+    private void Window_Closing(object? sender, CancelEventArgs e)
+    {
+        SaveSettings();
+        DisposeWatchers();
+    }
+
+    private async void Refresh_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshAllAsync();
+    }
+
+    private void AddSource_Click(object sender, RoutedEventArgs e)
+    {
+        var source = new SourceDirectoryItem
+        {
+            Token = $"S{Sources.Count + 1}",
+            Color = Palette.At(Sources.Count),
+            DirectoryPath = string.Empty,
+            StatusText = "Choose a directory"
+        };
+        WireSource(source);
+        Sources.Add(source);
+        SaveSettings();
+    }
+
+    private async void AddLocalSource_Click(object sender, RoutedEventArgs e)
+    {
+        var local = FindLocalVrchatDirectory();
+        if (!Directory.Exists(local))
+        {
+            StatusText = "Default local VRChat directory was not found.";
+            return;
+        }
+
+        if (Sources.Any(s => SamePath(s.DirectoryPath, local)))
+        {
+            StatusText = "Default local VRChat directory is already present.";
+            return;
+        }
+
+        var source = new SourceDirectoryItem
+        {
+            Token = $"S{Sources.Count + 1}",
+            Color = Palette.At(Sources.Count),
+            DirectoryPath = local
+        };
+        WireSource(source);
+        Sources.Add(source);
+        SaveSettings();
+        await RefreshAllAsync();
+    }
+
+    private static string FindLocalVrchatDirectory()
+    {
+        var candidates = new List<string>();
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var appDataRoot = Directory.GetParent(localAppData)?.FullName;
+        if (!string.IsNullOrWhiteSpace(appDataRoot))
+        {
+            candidates.Add(Path.Combine(appDataRoot, "LocalLow", "VRChat", "VRChat"));
+        }
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(userProfile))
+        {
+            candidates.Add(Path.Combine(userProfile, "AppData", "LocalLow", "VRChat", "VRChat"));
+        }
+
+        return candidates.FirstOrDefault(Directory.Exists) ?? candidates.FirstOrDefault() ?? string.Empty;
+    }
+
+    private async void BrowseSource_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not SourceDirectoryItem source)
+        {
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "Select VRChat run/log directory",
+            InitialDirectory = Directory.Exists(source.DirectoryPath) ? source.DirectoryPath : string.Empty,
+            Multiselect = false
+        };
+
+        if (dialog.ShowDialog(this) == true)
+        {
+            source.DirectoryPath = dialog.FolderName;
+            SaveSettings();
+            await RefreshAllAsync();
+        }
+    }
+
+    private async void RemoveSource_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not SourceDirectoryItem source)
+        {
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"Remove source {source.Token}? Associated cached file state for this source will be removed.",
+            "Remove source",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        Sources.Remove(source);
+        var toRemove = LogFiles.Where(f => f.SourceId == source.Id).ToList();
+        foreach (var file in toRemove)
+        {
+            LogFiles.Remove(file);
+            _entriesByFile.Remove(file.FileKey);
+            _settings.FileStates.Remove(file.FileKey);
+        }
+
+        SaveSettings();
+        await RefreshAllAsync();
+    }
+
+    private async void SourcePath_LostFocus(object sender, RoutedEventArgs e)
+    {
+        SaveSettings();
+        await RefreshAllAsync();
+    }
+
+    private void CycleLogColor_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not LogFileItem file)
+        {
+            return;
+        }
+
+        file.Color = NextPaletteColor(file.Color);
+    }
+
+    private void CycleFilterColor_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not RegexFilterItem filter)
+        {
+            return;
+        }
+
+        filter.Color = NextPaletteColor(filter.Color);
+    }
+
+    private async void DeleteSelectedLogs_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = LogFilesList.SelectedItems.OfType<LogFileItem>().ToList();
+        if (selected.Count == 0)
+        {
+            StatusText = "Select one or more log files first.";
+            return;
+        }
+
+        var result = MessageBox.Show(
+            $"Delete {selected.Count} log file(s) from disk? This cannot be undone.",
+            "Delete log files",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        foreach (var file in selected)
+        {
+            try
+            {
+                if (File.Exists(file.FilePath))
+                {
+                    File.Delete(file.FilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Could not delete {file.FileName}: {ex.Message}";
+            }
+        }
+
+        await RefreshAllAsync();
+    }
+
+    private void LogFileRow_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBoxItem item || item.DataContext is not LogFileItem logFile)
+        {
+            return;
+        }
+
+        if (!item.IsSelected)
+        {
+            LogFilesList.SelectedItems.Clear();
+            LogFilesList.SelectedItem = logFile;
+        }
+
+        item.Focus();
+    }
+
+    private void LogFileRow_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is not ListBoxItem item)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu();
+        var delete = new MenuItem { Header = "Delete selected log file(s)" };
+        delete.Click += DeleteSelectedLogs_Click;
+        menu.Items.Add(delete);
+        item.ContextMenu = menu;
+    }
+
+    private void AddFilter_Click(object sender, RoutedEventArgs e)
+    {
+        var filter = new RegexFilterItem
+        {
+            Name = $"Filter {Filters.Count + 1}",
+            Pattern = string.Empty,
+            Color = Palette.At(Filters.Count + 4),
+            IsEnabled = false
+        };
+        WireFilter(filter);
+        Filters.Add(filter);
+        SaveSettings();
+    }
+
+    private void RemoveFilter_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is RegexFilterItem filter)
+        {
+            Filters.Remove(filter);
+            ApplyTimelineFilters();
+            SaveSettings();
+        }
+    }
+
+    private void SearchBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            UpdateSearchMatches();
+            GoToSearchMatch(0);
+            e.Handled = true;
+        }
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateSearchMatches();
+    }
+
+    private void SearchFirst_Click(object sender, RoutedEventArgs e) => GoToSearchMatch(0);
+
+    private void SearchPrevious_Click(object sender, RoutedEventArgs e)
+    {
+        if (_searchMatches.Count == 0)
+        {
+            return;
+        }
+
+        GoToSearchMatch(_searchIndex <= 0 ? _searchMatches.Count - 1 : _searchIndex - 1);
+    }
+
+    private void SearchNext_Click(object sender, RoutedEventArgs e)
+    {
+        if (_searchMatches.Count == 0)
+        {
+            return;
+        }
+
+        GoToSearchMatch(_searchIndex >= _searchMatches.Count - 1 ? 0 : _searchIndex + 1);
+    }
+
+    private void SearchLast_Click(object sender, RoutedEventArgs e) => GoToSearchMatch(_searchMatches.Count - 1);
+
+    private void SearchToFilter_Click(object sender, RoutedEventArgs e)
+    {
+        var pattern = SearchText.Trim();
+        if (string.IsNullOrWhiteSpace(pattern))
+        {
+            return;
+        }
+
+        var filter = new RegexFilterItem
+        {
+            Name = $"Search {Filters.Count + 1}",
+            Pattern = pattern,
+            Color = Palette.At(Filters.Count + 5),
+            IsEnabled = true,
+            IsRegex = SearchUseRegex
+        };
+        WireFilter(filter);
+        Filters.Add(filter);
+        ShowUnfilteredLines = false;
+        ApplyTimelineFilters();
+        SaveSettings();
+    }
+
+    private void CopySelected_Click(object sender, RoutedEventArgs e)
+    {
+        var entries = CheckedOrSelectedTimelineEntries();
+        if (entries.Count == 0)
+        {
+            StatusText = "No checked or selected timeline entries to copy.";
+            return;
+        }
+
+        Clipboard.SetText(BuildClipboardText(entries));
+        StatusText = $"Copied {entries.Count:n0} entries.";
+    }
+
+    private void HideSelected_Click(object sender, RoutedEventArgs e)
+    {
+        var entries = CheckedOrSelectedTimelineEntries();
+        if (entries.Count == 0)
+        {
+            StatusText = "No checked or selected timeline entries to hide.";
+            return;
+        }
+
+        foreach (var entry in entries)
+        {
+            _hiddenLineKeys.Add(entry.LineKey);
+            entry.IsHidden = true;
+        }
+
+        ApplyTimelineFilters();
+        SaveSettings();
+        StatusText = $"Hid {entries.Count:n0} entries.";
+    }
+
+    private void AddMarker_Click(object sender, RoutedEventArgs e)
+    {
+        InsertPromptedMarker(GetMarkerAnchor());
+    }
+
+    private void ContextAddMarker_Click(object sender, RoutedEventArgs e)
+    {
+        InsertPromptedMarker(GetContextTimelineEntry(sender) ?? GetMarkerAnchor());
+    }
+
+    private void ContextReviewed_Click(object sender, RoutedEventArgs e)
+    {
+        var entry = GetContextTimelineEntry(sender);
+        if (entry is null)
+        {
+            return;
+        }
+
+        _reviewedLineKey = entry.LineKey;
+        ApplyTimelineFilters();
+        SaveSettings();
+        StatusText = $"Reviewed marker moved to {entry.DisplayTime}.";
+    }
+
+    private void TimelineRow_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) is not null)
+        {
+            return;
+        }
+
+        if (GetTimelineEntryFromSender(sender) is not { } entry)
+        {
+            return;
+        }
+
+        _dragSelectionIsAdditive = IsControlDown();
+        if (!_dragSelectionIsAdditive)
+        {
+            ClearTimelineSelection();
+        }
+
+        _isDraggingTimelineSelection = true;
+        _dragStartEntry = entry;
+        _dragSelectionValue = true;
+        entry.IsSelectedForCopy = _dragSelectionValue;
+        Mouse.Capture(sender as IInputElement);
+        e.Handled = true;
+    }
+
+    private void TimelineRow_MouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!_isDraggingTimelineSelection || e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        if (GetTimelineEntryFromSender(sender) is { } entry)
+        {
+            SelectTimelineRange(_dragStartEntry, entry, _dragSelectionIsAdditive);
+        }
+    }
+
+    private void TimelineRow_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        _isDraggingTimelineSelection = false;
+        _dragStartEntry = null;
+        Mouse.Capture(null);
+    }
+
+    private void TimelineCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is TimelineEntry entry &&
+            sender is CheckBox checkBox)
+        {
+            entry.IsSelectedForCopy = checkBox.IsChecked == true;
+        }
+    }
+
+    private void TimelineRow_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBoxItem item || item.DataContext is not TimelineEntry entry)
+        {
+            return;
+        }
+
+        if (!entry.IsSelectedForCopy && !IsControlDown())
+        {
+            ClearTimelineSelection();
+            entry.IsSelectedForCopy = true;
+        }
+
+        TimelineList.SelectedItem = entry;
+        item.Focus();
+    }
+
+    private void TimelineRow_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is not ListBoxItem item || item.DataContext is not TimelineEntry)
+        {
+            return;
+        }
+
+        var menu = new ContextMenu();
+        var copy = new MenuItem { Header = "Copy selected line(s)" };
+        copy.Click += CopySelected_Click;
+        var hide = new MenuItem { Header = "Hide selected line(s)" };
+        hide.Click += HideSelected_Click;
+        var marker = new MenuItem { Header = "Insert marker after this line" };
+        marker.Click += ContextAddMarker_Click;
+        var reviewed = new MenuItem { Header = "Reviewed up to here" };
+        reviewed.Click += ContextReviewed_Click;
+
+        menu.Items.Add(copy);
+        menu.Items.Add(hide);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(marker);
+        menu.Items.Add(reviewed);
+        item.ContextMenu = menu;
+    }
+
+    private void ClearTimelineSelection()
+    {
+        foreach (var timelineEntry in TimelineEntries.Where(e => e.IsSelectedForCopy))
+        {
+            timelineEntry.IsSelectedForCopy = false;
+        }
+    }
+
+    private void SelectTimelineRange(TimelineEntry? start, TimelineEntry end, bool additive)
+    {
+        if (start is null)
+        {
+            end.IsSelectedForCopy = true;
+            return;
+        }
+
+        if (!additive)
+        {
+            ClearTimelineSelection();
+        }
+
+        var startIndex = TimelineEntries.IndexOf(start);
+        var endIndex = TimelineEntries.IndexOf(end);
+        if (startIndex < 0 || endIndex < 0)
+        {
+            end.IsSelectedForCopy = true;
+            return;
+        }
+
+        var low = Math.Min(startIndex, endIndex);
+        var high = Math.Max(startIndex, endIndex);
+        for (var i = low; i <= high; i++)
+        {
+            TimelineEntries[i].IsSelectedForCopy = true;
+        }
+    }
+
+    private static bool IsControlDown()
+    {
+        return Keyboard.IsKeyDown(Key.LeftCtrl) || Keyboard.IsKeyDown(Key.RightCtrl);
+    }
+
+    private void ToggleChecklist_Click(object sender, RoutedEventArgs e)
+    {
+        var isOpen = ChecklistPanel.Visibility == Visibility.Visible;
+        ChecklistPanel.Visibility = isOpen ? Visibility.Collapsed : Visibility.Visible;
+        ChecklistColumn.Width = isOpen ? new GridLength(0) : new GridLength(370);
+    }
+
+    private void ParseChecklist_Click(object sender, RoutedEventArgs e)
+    {
+        ParseChecklist();
+        ApplyTimelineFilters();
+        SaveSettings();
+    }
+
+    private void PasteChecklist_Click(object sender, RoutedEventArgs e)
+    {
+        if (Clipboard.ContainsText())
+        {
+            ChecklistText = Clipboard.GetText();
+            ParseChecklist();
+            ApplyTimelineFilters();
+        }
+    }
+
+    private void ClearChecklist_Click(object sender, RoutedEventArgs e)
+    {
+        ChecklistText = string.Empty;
+        ChecklistItems = [];
+        OnPropertyChanged(nameof(ChecklistItems));
+        SaveSettings();
+    }
+
+    private void SampleChecklist_Click(object sender, RoutedEventArgs e)
+    {
+        ChecklistText = """
+ordered: Multiplayer smoke test
+  action: Start host client => marker: Host started
+  action: Start second client => marker: Second client started
+  expect: Udon
+  unordered: Startup warnings of interest
+    expect: Warning
+    expect: Network
+  marker: Finished smoke-test pass
+""";
+        ParseChecklist();
+        ApplyTimelineFilters();
+        SaveSettings();
+    }
+
+    private void ChecklistManual_Checked(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not ChecklistNode node)
+        {
+            return;
+        }
+
+        node.IsComplete = true;
+        node.StatusText = "Done";
+        node.MatchSortTicks = DateTime.Now.Ticks;
+
+        if (!string.IsNullOrWhiteSpace(node.InsertMarker))
+        {
+            InsertMarkerInternal(node.InsertMarker, GetMarkerAnchor(), $"check:{node.Id}", applyNow: true);
+        }
+
+        EvaluateChecklist();
+        SaveSettings();
+    }
+
+    private async Task RefreshAllAsync()
+    {
+        if (_isRefreshing)
+        {
+            return;
+        }
+
+        _isRefreshing = true;
+        try
+        {
+            StatusText = "Scanning sources...";
+            await DiscoverLogFilesAsync();
+            ConfigureWatchers();
+            await ParseIncludedLogsAsync();
+            StatusText = $"Ready. {LogFiles.Count:n0} log files discovered.";
+        }
+        finally
+        {
+            _isRefreshing = false;
+        }
+    }
+
+    private Task DiscoverLogFilesAsync()
+    {
+        return Dispatcher.InvokeAsync(() =>
+        {
+            var discovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var currentByKey = LogFiles.ToDictionary(f => f.FileKey, StringComparer.OrdinalIgnoreCase);
+            var next = new List<LogFileItem>();
+
+            foreach (var source in Sources)
+            {
+                if (string.IsNullOrWhiteSpace(source.DirectoryPath) || !Directory.Exists(source.DirectoryPath))
+                {
+                    source.IsAvailable = false;
+                    source.StatusText = string.IsNullOrWhiteSpace(source.DirectoryPath) ? "No path" : "Offline or unavailable";
+                    continue;
+                }
+
+                source.IsAvailable = true;
+                var files = SafeEnumerateLogs(source.DirectoryPath)
+                    .OrderByDescending(f => LogParser.ParseStartTimestamp(f))
+                    .ToList();
+                source.StatusText = $"{files.Count:n0} logs";
+
+                for (var index = 0; index < files.Count; index++)
+                {
+                    var path = files[index];
+                    var key = Path.GetFullPath(path).ToUpperInvariant();
+                    discovered.Add(key);
+                    var info = new FileInfo(path);
+                    var start = LogParser.ParseStartTimestamp(path);
+                    var lastActivity = SafeLastWrite(info);
+
+                    if (!currentByKey.TryGetValue(key, out var item))
+                    {
+                        _settings.FileStates.TryGetValue(key, out var saved);
+                        item = new LogFileItem
+                        {
+                            FilePath = path,
+                            SourceId = source.Id,
+                            SourceToken = source.Token,
+                            Alias = string.IsNullOrWhiteSpace(saved?.Alias) ? $"Client {index + 1}" : saved.Alias,
+                            Color = saved?.Color ?? Palette.At(index + 2),
+                            IncludeInTimeline = saved?.IncludeInTimeline ?? index < 6,
+                            IsVisible = saved?.IsVisible ?? index < 6,
+                            StartTimestamp = start,
+                            LastActivityTimestamp = lastActivity,
+                            LengthBytes = info.Exists ? info.Length : 0,
+                            IsAvailable = info.Exists
+                        };
+                        WireLogFile(item);
+                    }
+                    else
+                    {
+                        item.SourceId = source.Id;
+                        item.SourceToken = source.Token;
+                        item.StartTimestamp = start;
+                        item.LastActivityTimestamp = lastActivity;
+                        item.LengthBytes = info.Exists ? info.Length : 0;
+                        item.IsAvailable = info.Exists;
+                    }
+
+                    next.Add(item);
+                }
+            }
+
+            foreach (var existing in LogFiles)
+            {
+                if (!discovered.Contains(existing.FileKey) && Sources.Any(s => s.Id == existing.SourceId))
+                {
+                    existing.IsAvailable = false;
+                    next.Add(existing);
+                }
+            }
+
+            ReplaceLogFiles(next
+                .DistinctBy(f => f.FileKey, StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(f => f.StartTimestamp)
+                .ThenBy(f => f.FileName)
+                .ToList());
+
+            SaveSettings();
+        }).Task;
+    }
+
+    private async Task ParseIncludedLogsAsync()
+    {
+        var included = LogFiles.Where(f => f.IncludeInTimeline && f.IsAvailable).ToList();
+        StatusText = included.Count == 0 ? "No included logs to parse." : $"Parsing {included.Count:n0} included log file(s)...";
+
+        var parsed = await Task.Run(() =>
+        {
+            var result = new Dictionary<string, List<TimelineEntry>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in included)
+            {
+                try
+                {
+                    result[file.FileKey] = LogParser.ParseFile(file).ToList();
+                }
+                catch
+                {
+                    result[file.FileKey] = [];
+                }
+            }
+
+            return result;
+        });
+
+        foreach (var file in LogFiles)
+        {
+            if (parsed.TryGetValue(file.FileKey, out var entries))
+            {
+                _entriesByFile[file.FileKey] = entries;
+                file.EntryCount = entries.Count;
+            }
+            else if (!file.IncludeInTimeline)
+            {
+                _entriesByFile.Remove(file.FileKey);
+                file.EntryCount = 0;
+            }
+        }
+
+        LoadedEntryCount = _entriesByFile.Values.Sum(v => v.Count);
+        ApplyTimelineFilters();
+    }
+
+    private void ApplyTimelineFilters()
+    {
+        if (_isLoading)
+        {
+            return;
+        }
+
+        var shouldAutoScroll = ShouldAutoScrollAfterRefresh();
+        var activeFilters = CompileFilters();
+        var visibleFiles = LogFiles
+            .Where(f => f.IncludeInTimeline && f.IsVisible)
+            .ToDictionary(f => f.FileKey, StringComparer.OrdinalIgnoreCase);
+
+        var merged = new List<TimelineEntry>();
+        foreach (var (fileKey, entries) in _entriesByFile)
+        {
+            if (!visibleFiles.ContainsKey(fileKey))
+            {
+                continue;
+            }
+
+            foreach (var entry in entries)
+            {
+                if (ShouldDisplayEntry(entry, activeFilters))
+                {
+                    merged.Add(entry);
+                }
+            }
+        }
+
+        if (ShowMarkers)
+        {
+            merged.AddRange(BuildMarkerEntries());
+        }
+
+        var ordered = merged
+            .OrderBy(e => e.SortTicks)
+            .ThenBy(e => e.IsMarker ? 1 : 0)
+            .ThenBy(e => e.SourceToken)
+            .ThenBy(e => e.LineNumber)
+            .ToList();
+
+        TimelineEntries.Clear();
+        foreach (var entry in ordered)
+        {
+            entry.IsHidden = _hiddenLineKeys.Contains(entry.LineKey);
+            entry.IsReviewedBoundary = entry.LineKey.Equals(_reviewedLineKey, StringComparison.OrdinalIgnoreCase);
+            TimelineEntries.Add(entry);
+        }
+
+        VisibleEntryCount = TimelineEntries.Count;
+        UpdateSearchMatches();
+        EvaluateChecklist();
+
+        if (shouldAutoScroll)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (TimelineEntries.Count > 0)
+                {
+                    TimelineList.ScrollIntoView(TimelineEntries[^1]);
+                }
+            }, DispatcherPriority.Background);
+        }
+    }
+
+    private bool ShouldDisplayEntry(TimelineEntry entry, IReadOnlyList<(RegexFilterItem Filter, Regex? Regex)> activeFilters)
+    {
+        entry.FilterBadges.Clear();
+        entry.IsHidden = _hiddenLineKeys.Contains(entry.LineKey);
+        if (entry.IsHidden && !ShowHiddenLines)
+        {
+            return false;
+        }
+
+        if (!IsSeverityVisible(entry.Severity))
+        {
+            return false;
+        }
+
+        if (activeFilters.Count == 0)
+        {
+            return true;
+        }
+
+        foreach (var (filter, regex) in activeFilters)
+        {
+            if (FilterMatches(entry.FullText, filter, regex))
+            {
+                entry.FilterBadges.Add(new FilterBadge { Name = filter.Name, Color = filter.Color });
+            }
+        }
+
+        return entry.FilterBadges.Count > 0 || ShowUnfilteredLines;
+    }
+
+    private List<TimelineEntry> BuildMarkerEntries()
+    {
+        return _markers.Select((marker, index) => new TimelineEntry
+        {
+            LineKey = $"marker:{marker.Id}",
+            Timestamp = marker.Timestamp,
+            SortTicks = marker.SortTicks == 0 ? marker.Timestamp.Ticks : marker.SortTicks,
+            Sequence = index,
+            LineNumber = index,
+            Severity = "Marker",
+            Message = marker.Text,
+            SourceColor = "#F4D35E",
+            IsMarker = true
+        }).Where(e => ShowHiddenLines || !_hiddenLineKeys.Contains(e.LineKey)).ToList();
+    }
+
+    private bool IsSeverityVisible(string severity)
+    {
+        var normalized = NormalizeSeverityGroup(severity);
+        return normalized switch
+        {
+            "Error" => ShowLevelError,
+            "Warning" => ShowLevelWarning,
+            "Debug" => ShowLevelDebug,
+            "Log" => ShowLevelLog,
+            _ => ShowLevelOther
+        };
+    }
+
+    private static string NormalizeSeverityGroup(string severity)
+    {
+        return severity.Trim().ToUpperInvariant() switch
+        {
+            "ERROR" or "EXCEPTION" or "FATAL" => "Error",
+            "WARNING" or "WARN" => "Warning",
+            "DEBUG" or "TRACE" => "Debug",
+            "LOG" or "INFO" or "INFORMATION" => "Log",
+            _ => "Other"
+        };
+    }
+
+    private static bool FilterMatches(string text, RegexFilterItem filter, Regex? regex)
+    {
+        return filter.IsRegex
+            ? regex?.IsMatch(text) == true
+            : text.Contains(filter.Pattern, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private IReadOnlyList<(RegexFilterItem Filter, Regex? Regex)> CompileFilters()
+    {
+        var compiled = new List<(RegexFilterItem, Regex?)>();
+        foreach (var filter in Filters.Where(f => f.IsEnabled && !string.IsNullOrWhiteSpace(f.Pattern)))
+        {
+            if (!filter.IsRegex)
+            {
+                filter.IsValid = true;
+                filter.ErrorText = "Text match";
+                compiled.Add((filter, null));
+                continue;
+            }
+
+            try
+            {
+                compiled.Add((filter, new Regex(filter.Pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled)));
+                filter.IsValid = true;
+                filter.ErrorText = "Regex OK";
+            }
+            catch (Exception ex)
+            {
+                filter.IsValid = false;
+                filter.ErrorText = ex.Message;
+            }
+        }
+
+        return compiled;
+    }
+
+    private void ParseChecklist()
+    {
+        ChecklistItems = ChecklistParser.Parse(ChecklistText);
+        OnPropertyChanged(nameof(ChecklistItems));
+        EvaluateChecklist();
+    }
+
+    private void EvaluateChecklist()
+    {
+        if (_isEvaluatingChecklist || ChecklistItems.Count == 0)
+        {
+            return;
+        }
+
+        _isEvaluatingChecklist = true;
+        try
+        {
+            foreach (var node in ChecklistItems)
+            {
+                node.IsActive = false;
+                if (!node.IsComplete)
+                {
+                    node.StatusText = node.Type == ChecklistNodeType.Expect ? "Watching" : "Pending";
+                }
+            }
+
+            var logEntries = TimelineEntries
+                .Where(e => !e.IsMarker)
+                .OrderBy(e => e.SortTicks)
+                .ThenBy(e => e.SourceToken)
+                .ThenBy(e => e.LineNumber)
+                .ToList();
+
+            var markerAdded = false;
+            foreach (var root in ChecklistParser.Roots(ChecklistItems))
+            {
+                var cursor = 0L;
+                EvaluateChecklistNode(root, logEntries, ref cursor, ref markerAdded);
+            }
+
+            if (markerAdded)
+            {
+                SaveSettings();
+                Dispatcher.BeginInvoke(ApplyTimelineFilters, DispatcherPriority.Background);
+            }
+        }
+        finally
+        {
+            _isEvaluatingChecklist = false;
+        }
+    }
+
+    private bool EvaluateChecklistNode(ChecklistNode node, IReadOnlyList<TimelineEntry> entries, ref long cursor, ref bool markerAdded)
+    {
+        switch (node.Type)
+        {
+            case ChecklistNodeType.Expect:
+                node.IsActive = !node.IsComplete;
+                if (node.IsComplete)
+                {
+                    cursor = Math.Max(cursor, node.MatchSortTicks);
+                    return true;
+                }
+
+                if (!ChecklistParser.TryCompile(node, out var regex) || regex is null)
+                {
+                    return false;
+                }
+
+                var cursorSnapshot = cursor;
+                var match = entries.FirstOrDefault(e => e.SortTicks > cursorSnapshot && regex.IsMatch(e.FullText));
+                if (match is null)
+                {
+                    node.StatusText = "Watching";
+                    return false;
+                }
+
+                node.IsComplete = true;
+                node.MatchLineKey = match.LineKey;
+                node.MatchSortTicks = match.SortTicks;
+                node.StatusText = match.DisplayTime;
+                cursor = match.SortTicks;
+                if (!string.IsNullOrWhiteSpace(node.InsertMarker))
+                {
+                    markerAdded |= InsertMarkerInternal(node.InsertMarker, match, $"check:{node.Id}", applyNow: false);
+                }
+
+                return true;
+
+            case ChecklistNodeType.Action:
+            case ChecklistNodeType.Marker:
+                node.IsActive = !node.IsComplete;
+                if (node.IsComplete)
+                {
+                    cursor = Math.Max(cursor, node.MatchSortTicks);
+                    return true;
+                }
+
+                node.StatusText = node.Type == ChecklistNodeType.Marker ? "Insert" : "Manual";
+                return false;
+
+            case ChecklistNodeType.OrderedGroup:
+                node.IsActive = !node.IsComplete;
+                foreach (var child in node.Children)
+                {
+                    if (!EvaluateChecklistNode(child, entries, ref cursor, ref markerAdded))
+                    {
+                        break;
+                    }
+                }
+
+                node.IsComplete = node.Children.Count > 0 && node.Children.All(c => c.IsComplete);
+                node.StatusText = $"{node.Children.Count(c => c.IsComplete)}/{node.Children.Count}";
+                return node.IsComplete;
+
+            case ChecklistNodeType.UnorderedGroup:
+                node.IsActive = !node.IsComplete;
+                foreach (var child in node.Children)
+                {
+                    var childCursor = cursor;
+                    EvaluateChecklistNode(child, entries, ref childCursor, ref markerAdded);
+                }
+
+                node.IsComplete = node.Children.Count > 0 && node.Children.All(c => c.IsComplete);
+                node.StatusText = $"{node.Children.Count(c => c.IsComplete)}/{node.Children.Count}";
+                return node.IsComplete;
+
+            default:
+                return false;
+        }
+    }
+
+    private bool InsertMarkerInternal(string text, TimelineEntry? anchor, string markerKey, bool applyNow)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        if (markerKey.StartsWith("check:", StringComparison.OrdinalIgnoreCase) &&
+            _markers.Any(m => m.AnchorLineKey.Equals(markerKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        var timestamp = anchor?.Timestamp ?? DateTime.Now;
+        var sortTicks = (anchor?.SortTicks ?? timestamp.Ticks) + 1;
+        _markers.Add(new MarkerItem
+        {
+            Text = text.Trim(),
+            Timestamp = new DateTime(Math.Clamp(sortTicks, DateTime.MinValue.Ticks, DateTime.MaxValue.Ticks)),
+            SortTicks = sortTicks,
+            AnchorLineKey = markerKey
+        });
+
+        if (applyNow)
+        {
+            ApplyTimelineFilters();
+            SaveSettings();
+        }
+
+        return true;
+    }
+
+    private void InsertPromptedMarker(TimelineEntry? anchor)
+    {
+        var dialog = new PromptDialog("Insert marker", "Marker text:", "Started test action") { Owner = this };
+        if (dialog.ShowDialog() == true)
+        {
+            var markerKey = anchor is null
+                ? $"manual:{Guid.NewGuid():N}"
+                : $"{anchor.LineKey}:manual:{Guid.NewGuid():N}";
+            InsertMarkerInternal(dialog.Value, anchor, markerKey, applyNow: true);
+            StatusText = "Marker inserted.";
+        }
+    }
+
+    private TimelineEntry? GetMarkerAnchor()
+    {
+        return TimelineList.SelectedItem as TimelineEntry
+            ?? TimelineEntries.LastOrDefault(e => e.IsSelectedForCopy)
+            ?? TimelineEntries.LastOrDefault();
+    }
+
+    private List<TimelineEntry> CheckedOrSelectedTimelineEntries()
+    {
+        var checkedEntries = TimelineEntries.Where(e => e.IsSelectedForCopy).ToList();
+        if (checkedEntries.Count > 0)
+        {
+            return checkedEntries;
+        }
+
+        return TimelineList.SelectedItems.OfType<TimelineEntry>().ToList();
+    }
+
+    private string BuildClipboardText(IReadOnlyList<TimelineEntry> entries)
+    {
+        var builder = new StringBuilder();
+        foreach (var entry in entries.OrderBy(e => e.SortTicks).ThenBy(e => e.SourceToken).ThenBy(e => e.LineNumber))
+        {
+            builder.Append('[')
+                .Append(entry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff"))
+                .Append("] [")
+                .Append(entry.DisplaySource)
+                .Append("] [")
+                .Append(entry.Severity)
+                .Append(']')
+                .Append(' ')
+                .AppendLine(entry.FullText);
+        }
+
+        return builder.ToString();
+    }
+
+    private void UpdateSearchMatches()
+    {
+        var pattern = SearchText.Trim();
+        _searchIndex = -1;
+        if (string.IsNullOrWhiteSpace(pattern))
+        {
+            _searchMatches = [];
+            SearchStatusText = "0 matches";
+            return;
+        }
+
+        try
+        {
+            if (SearchUseRegex)
+            {
+                var regex = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
+                _searchMatches = TimelineEntries.Where(e => regex.IsMatch(e.FullText)).ToList();
+            }
+            else
+            {
+                _searchMatches = TimelineEntries.Where(e => e.FullText.Contains(pattern, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+
+            SearchStatusText = $"{_searchMatches.Count:n0} matches";
+        }
+        catch (Exception ex)
+        {
+            _searchMatches = [];
+            SearchStatusText = $"Invalid regex: {ex.Message}";
+        }
+    }
+
+    private void GoToSearchMatch(int index)
+    {
+        if (_searchMatches.Count == 0 || index < 0 || index >= _searchMatches.Count)
+        {
+            return;
+        }
+
+        _searchIndex = index;
+        var entry = _searchMatches[index];
+        TimelineList.SelectedItem = entry;
+        TimelineList.ScrollIntoView(entry);
+        SearchStatusText = $"{index + 1:n0}/{_searchMatches.Count:n0}";
+    }
+
+    private bool ShouldAutoScrollAfterRefresh()
+    {
+        return AutoScrollMode switch
+        {
+            "Always On" => true,
+            "Follow If At Bottom" => IsTimelineAtBottom(),
+            _ => false
+        };
+    }
+
+    private bool IsTimelineAtBottom()
+    {
+        var scroll = FindVisualChild<ScrollViewer>(TimelineList);
+        if (scroll is null)
+        {
+            return true;
+        }
+
+        return scroll.ScrollableHeight <= 0 || scroll.VerticalOffset >= scroll.ScrollableHeight - 2;
+    }
+
+    private void ConfigureWatchers()
+    {
+        DisposeWatchers();
+        foreach (var source in Sources.Where(s => s.IsAvailable && Directory.Exists(s.DirectoryPath)))
+        {
+            try
+            {
+                var watcher = new FileSystemWatcher(source.DirectoryPath, "output_log_*.txt")
+                {
+                    IncludeSubdirectories = false,
+                    NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.CreationTime
+                };
+                watcher.Created += Watcher_Changed;
+                watcher.Changed += Watcher_Changed;
+                watcher.Deleted += Watcher_Changed;
+                watcher.Renamed += Watcher_Changed;
+                watcher.Error += Watcher_Error;
+                watcher.EnableRaisingEvents = true;
+                _watchers.Add(watcher);
+            }
+            catch
+            {
+                source.IsAvailable = false;
+                source.StatusText = "Watcher unavailable";
+            }
+        }
+    }
+
+    private void Watcher_Changed(object sender, FileSystemEventArgs e)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            StatusText = "File change detected.";
+            _refreshDebounce.Stop();
+            _refreshDebounce.Start();
+        });
+    }
+
+    private void Watcher_Error(object sender, ErrorEventArgs e)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            StatusText = $"Watcher error: {e.GetException().Message}";
+            _refreshDebounce.Stop();
+            _refreshDebounce.Start();
+        });
+    }
+
+    private void DisposeWatchers()
+    {
+        foreach (var watcher in _watchers)
+        {
+            watcher.Dispose();
+        }
+
+        _watchers.Clear();
+    }
+
+    private void ReplaceLogFiles(IReadOnlyList<LogFileItem> next)
+    {
+        LogFiles.Clear();
+        foreach (var item in next)
+        {
+            WireLogFile(item);
+            LogFiles.Add(item);
+        }
+    }
+
+    private void Sources_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is not null)
+        {
+            foreach (SourceDirectoryItem source in e.NewItems)
+            {
+                WireSource(source);
+            }
+        }
+
+        if (!_isLoading)
+        {
+            SaveSettings();
+        }
+    }
+
+    private void Filters_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.NewItems is not null)
+        {
+            foreach (RegexFilterItem filter in e.NewItems)
+            {
+                WireFilter(filter);
+            }
+        }
+
+        if (!_isLoading)
+        {
+            ApplyTimelineFilters();
+            SaveSettings();
+        }
+    }
+
+    private void WireSource(SourceDirectoryItem source)
+    {
+        source.PropertyChanged -= Source_PropertyChanged;
+        source.PropertyChanged += Source_PropertyChanged;
+    }
+
+    private void Source_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_isLoading)
+        {
+            return;
+        }
+
+        SaveSettings();
+        if (e.PropertyName is nameof(SourceDirectoryItem.Token) or nameof(SourceDirectoryItem.Color))
+        {
+            _parseDebounce.Stop();
+            _parseDebounce.Start();
+        }
+    }
+
+    private void WireLogFile(LogFileItem file)
+    {
+        file.PropertyChanged -= LogFile_PropertyChanged;
+        file.PropertyChanged += LogFile_PropertyChanged;
+    }
+
+    private void LogFile_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_isLoading)
+        {
+            return;
+        }
+
+        SaveSettings();
+        if (e.PropertyName is nameof(LogFileItem.IncludeInTimeline)
+            or nameof(LogFileItem.IsVisible)
+            or nameof(LogFileItem.Alias)
+            or nameof(LogFileItem.Color))
+        {
+            _parseDebounce.Stop();
+            _parseDebounce.Start();
+        }
+    }
+
+    private void WireFilter(RegexFilterItem filter)
+    {
+        filter.PropertyChanged -= Filter_PropertyChanged;
+        filter.PropertyChanged += Filter_PropertyChanged;
+    }
+
+    private void Filter_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_isLoading)
+        {
+            return;
+        }
+
+        ApplyTimelineFilters();
+        SaveSettings();
+    }
+
+    private void AddDefaultFilters()
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            var filter = new RegexFilterItem
+            {
+                Name = $"Filter {i + 1}",
+                Pattern = string.Empty,
+                Color = Palette.At(i + 4),
+                IsEnabled = false,
+                IsRegex = false
+            };
+            WireFilter(filter);
+            Filters.Add(filter);
+        }
+    }
+
+    private void SaveSettings()
+    {
+        if (_isLoading)
+        {
+            return;
+        }
+
+        try
+        {
+            var state = new AppSettingsState
+            {
+                Sources = Sources.Select(s => new SourceDirectoryState
+                {
+                    Id = s.Id,
+                    Token = s.Token,
+                    Color = s.Color,
+                    DirectoryPath = s.DirectoryPath
+                }).ToList(),
+                FileStates = LogFiles.ToDictionary(
+                    f => f.FileKey,
+                    f => new LogFileState
+                    {
+                        Alias = f.Alias,
+                        Color = f.Color,
+                        IncludeInTimeline = f.IncludeInTimeline,
+                        IsVisible = f.IsVisible
+                    },
+                    StringComparer.OrdinalIgnoreCase),
+                Filters = Filters.Select(f => new FilterState
+                {
+                    Id = f.Id,
+                    Name = f.Name,
+                    Pattern = f.Pattern,
+                    Color = f.Color,
+                    IsEnabled = f.IsEnabled,
+                    IsRegex = f.IsRegex
+                }).ToList(),
+                Markers = _markers.ToList(),
+                HiddenLineKeys = new HashSet<string>(_hiddenLineKeys, StringComparer.OrdinalIgnoreCase),
+                ReviewedLineKey = _reviewedLineKey,
+                ShowHiddenLines = ShowHiddenLines,
+                ShowMarkers = ShowMarkers,
+                ShowLevelError = ShowLevelError,
+                ShowLevelWarning = ShowLevelWarning,
+                ShowLevelDebug = ShowLevelDebug,
+                ShowLevelLog = ShowLevelLog,
+                ShowLevelOther = ShowLevelOther,
+                ShowUnfilteredLines = ShowUnfilteredLines,
+                AutoScrollMode = AutoScrollMode,
+                SearchText = SearchText,
+                SearchUseRegex = SearchUseRegex,
+                ChecklistText = ChecklistText
+            };
+            _settings = state;
+            _settingsStore.Save(state);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Could not save settings: {ex.Message}";
+        }
+    }
+
+    private static IEnumerable<string> SafeEnumerateLogs(string directory)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(directory, "output_log_*.txt", SearchOption.TopDirectoryOnly).ToList();
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static DateTime SafeLastWrite(FileInfo info)
+    {
+        try
+        {
+            return info.Exists ? info.LastWriteTime : DateTime.MinValue;
+        }
+        catch
+        {
+            return DateTime.MinValue;
+        }
+    }
+
+    private static bool SamePath(string a, string b)
+    {
+        if (string.IsNullOrWhiteSpace(a) || string.IsNullOrWhiteSpace(b))
+        {
+            return false;
+        }
+
+        return string.Equals(Path.GetFullPath(a).TrimEnd('\\'), Path.GetFullPath(b).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NextPaletteColor(string current)
+    {
+        var index = Array.FindIndex(Palette.Colors, c => c.Equals(current, StringComparison.OrdinalIgnoreCase));
+        return Palette.At(index + 1);
+    }
+
+    private TimelineEntry? GetContextTimelineEntry(object sender)
+    {
+        if (sender is not MenuItem menuItem ||
+            menuItem.Parent is not ContextMenu menu ||
+            menu.PlacementTarget is not FrameworkElement placement)
+        {
+            return null;
+        }
+
+        return placement.DataContext as TimelineEntry
+            ?? TimelineList.SelectedItem as TimelineEntry
+            ?? TimelineEntries.FirstOrDefault(e => e.IsSelectedForCopy);
+    }
+
+    private static TimelineEntry? GetTimelineEntryFromSender(object sender)
+    {
+        return (sender as FrameworkElement)?.DataContext as TimelineEntry
+            ?? (sender as FrameworkElement)?.Tag as TimelineEntry;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T typed)
+            {
+                return typed;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T typed)
+            {
+                return typed;
+            }
+
+            var nested = FindVisualChild<T>(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    private bool SetProperty<T>(ref T field, T value, string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return false;
+        }
+
+        field = value;
+        OnPropertyChanged(propertyName);
+        return true;
+    }
+
+    private void OnPropertyChanged(string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}

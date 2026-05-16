@@ -1,0 +1,349 @@
+<Window x:Class="VLIT.MainWindow"
+        x:Name="Root"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:VLIT.Controls"
+        mc:Ignorable="d"
+        Title="VLIT - VRChat Logs Interrogation Tool"
+        Height="920"
+        Width="1540"
+        MinHeight="720"
+        MinWidth="1180"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing"
+        Background="{StaticResource AppBg}">
+    <Window.Resources>
+        <DataTemplate x:Key="SourceTemplate">
+            <Border BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1" Padding="4">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="46" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="54" />
+                        <ColumnDefinition Width="30" />
+                    </Grid.ColumnDefinitions>
+                    <Rectangle Width="16" Height="16" Fill="{Binding ColorBrush}" RadiusX="2" RadiusY="2" ToolTip="Source color" />
+                    <TextBox Grid.Column="1" Text="{Binding Token, UpdateSourceTrigger=PropertyChanged}" ToolTip="Source token" />
+                    <TextBox Grid.Column="2" Margin="4,0" Text="{Binding DirectoryPath, UpdateSourceTrigger=PropertyChanged}" LostFocus="SourcePath_LostFocus" ToolTip="VRChat run/log directory" />
+                    <Button Grid.Column="3" Content="Browse" Tag="{Binding}" Click="BrowseSource_Click" ToolTip="Select source directory" />
+                    <Button Grid.Column="4" Content="X" Tag="{Binding}" Click="RemoveSource_Click" ToolTip="Remove source" />
+                    <StackPanel Grid.Column="0" Grid.ColumnSpan="5" Orientation="Horizontal" Margin="0,28,0,0">
+                        <Ellipse Width="8" Height="8" Fill="{Binding StatusBrush}" Margin="2,0,6,0" />
+                        <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextMuted}" FontSize="11" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="LogFileTemplate">
+            <Border BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1" Padding="4">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="22" />
+                        <ColumnDefinition Width="22" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button Padding="0" Tag="{Binding}" Click="CycleLogColor_Click" ToolTip="Cycle file color">
+                        <Rectangle Width="14" Height="14" Fill="{Binding ColorBrush}" RadiusX="2" RadiusY="2" />
+                    </Button>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding IncludeInTimeline, UpdateSourceTrigger=PropertyChanged}" ToolTip="Include in merged timeline" />
+                    <CheckBox Grid.Column="2" IsChecked="{Binding IsVisible, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IncludeInTimeline}" ToolTip="Show included entries" />
+                    <StackPanel Grid.Column="3">
+                        <TextBox Text="{Binding Alias, UpdateSourceTrigger=PropertyChanged}" ToolTip="Client alias" />
+                        <TextBlock Text="{Binding FileName}" Foreground="{StaticResource TextMuted}" FontSize="11" />
+                        <TextBlock Text="{Binding TimeRangeText}" Foreground="{StaticResource TextMuted}" FontSize="11" />
+                        <TextBlock Text="{Binding MetadataText}" Foreground="{StaticResource TextMuted}" FontSize="11" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="FilterTemplate">
+            <Border BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1" CornerRadius="4" Margin="0,0,6,4" Padding="5">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="22" />
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="92" />
+                        <ColumnDefinition Width="220" />
+                        <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="30" />
+                    </Grid.ColumnDefinitions>
+                    <CheckBox IsChecked="{Binding IsEnabled, UpdateSourceTrigger=PropertyChanged}" ToolTip="Enable filter" />
+                    <Button Grid.Column="1" Padding="0" Tag="{Binding}" Click="CycleFilterColor_Click" ToolTip="Cycle filter color">
+                        <Rectangle Width="14" Height="14" Fill="{Binding ColorBrush}" RadiusX="2" RadiusY="2" />
+                    </Button>
+                    <TextBox Grid.Column="2" Margin="4,0" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filter name" />
+                    <TextBox Grid.Column="3" Margin="4,0" Text="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}" ToolTip="{Binding ErrorText}" />
+                    <CheckBox Grid.Column="4" Content="Regex" IsChecked="{Binding IsRegex, UpdateSourceTrigger=PropertyChanged}" Margin="4,0" ToolTip="Treat pattern as a regular expression" />
+                    <Button Grid.Column="5" Content="X" Tag="{Binding}" Click="RemoveFilter_Click" ToolTip="Remove filter" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="BadgeTemplate">
+            <Border Background="{Binding ColorBrush}" CornerRadius="3" Padding="4,1" Margin="0,0,4,0">
+                <TextBlock Text="{Binding Name}" Foreground="#101820" FontSize="11" FontWeight="SemiBold" />
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ChecklistTemplate">
+            <Border Margin="{Binding IndentMargin}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1" Padding="2">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="22" />
+                        <ColumnDefinition Width="52" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="76" />
+                    </Grid.ColumnDefinitions>
+                    <CheckBox IsChecked="{Binding IsComplete, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsManualEnabled}" Tag="{Binding}" Checked="ChecklistManual_Checked" />
+                    <Border Grid.Column="1" Background="{Binding StatusBrush}" CornerRadius="3" Padding="3,1" Margin="2,0,4,0">
+                        <TextBlock Text="{Binding TypeLabel}" FontSize="10" Foreground="#0B1117" FontWeight="Bold" HorizontalAlignment="Center" />
+                    </Border>
+                    <TextBlock Grid.Column="2" Text="{Binding Text}" VerticalAlignment="Center" ToolTip="{Binding Pattern}" />
+                    <TextBlock Grid.Column="3" Text="{Binding StatusText}" Foreground="{StaticResource TextMuted}" FontSize="11" VerticalAlignment="Center" TextAlignment="Right" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="{StaticResource PanelBg2}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1" Padding="8">
+            <DockPanel LastChildFill="True">
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                    <Button Content="Refresh" Click="Refresh_Click" ToolTip="Rescan directories and reload included logs" />
+                    <Button Content="Add Local VRChat" Margin="6,0,0,0" Click="AddLocalSource_Click" ToolTip="Add the standard local VRChat LocalLow log directory if it exists" />
+                    <Button Content="Add Source" Margin="6,0,0,0" Click="AddSource_Click" ToolTip="Add a log source directory" />
+                    <Button Content="Copy Selected" Margin="6,0,0,0" Click="CopySelected_Click" ToolTip="Copy checked timeline entries" />
+                    <Button Content="Hide Selected" Margin="6,0,0,0" Click="HideSelected_Click" ToolTip="Hide checked timeline entries" />
+                    <Button Content="Add Marker" Margin="6,0,0,0" Click="AddMarker_Click" ToolTip="Insert a marker after the selected or newest line" />
+                    <Button Content="Checklist" Margin="6,0,0,0" Click="ToggleChecklist_Click" ToolTip="Show or hide checklist panel" />
+                </StackPanel>
+                <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" HorizontalAlignment="Right" />
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="430" MinWidth="330" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="ChecklistColumn" Width="0" MinWidth="0" />
+            </Grid.ColumnDefinitions>
+
+            <Grid Grid.Column="0" Background="{StaticResource PanelBg}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="210" />
+                    <RowDefinition Height="150" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <GroupBox Header="Sources" Grid.Row="0" Margin="8,8,8,4">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Sources}" ItemTemplate="{StaticResource SourceTemplate}" />
+                    </ScrollViewer>
+                </GroupBox>
+
+                <GroupBox Header="Lifetime" Grid.Row="1" Margin="8,4">
+                    <controls:LifetimeChart Files="{Binding ElementName=Root, Path=LogFiles}" />
+                </GroupBox>
+
+                <GroupBox Header="Log Files" Grid.Row="2" Margin="8,4,8,8">
+                    <ListBox x:Name="LogFilesList"
+                             ItemsSource="{Binding LogFiles}"
+                             ItemTemplate="{StaticResource LogFileTemplate}"
+                             SelectionMode="Extended"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <EventSetter Event="PreviewMouseRightButtonDown" Handler="LogFileRow_PreviewMouseRightButtonDown" />
+                                <EventSetter Event="ContextMenuOpening" Handler="LogFileRow_ContextMenuOpening" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
+                </GroupBox>
+            </Grid>
+
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderSubtle}" />
+
+            <Grid Grid.Column="2" Background="{StaticResource AppBg}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1" Padding="8">
+                    <StackPanel>
+                        <WrapPanel>
+                            <ItemsControl ItemsSource="{Binding Filters}" ItemTemplate="{StaticResource FilterTemplate}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                            <Button Content="Add Filter" Click="AddFilter_Click" Margin="0,0,6,4" />
+                            <CheckBox Content="Show unmatched" IsChecked="{Binding ShowUnfilteredLines, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
+                            <CheckBox Content="Show hidden" IsChecked="{Binding ShowHiddenLines, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
+                            <CheckBox Content="Show markers" IsChecked="{Binding ShowMarkers, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
+                            <TextBlock Text="Levels" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="8,0,6,4" />
+                            <CheckBox Content="Error" IsChecked="{Binding ShowLevelError, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
+                            <CheckBox Content="Warning" IsChecked="{Binding ShowLevelWarning, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
+                            <CheckBox Content="Debug" IsChecked="{Binding ShowLevelDebug, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
+                            <CheckBox Content="Log/Info" IsChecked="{Binding ShowLevelLog, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
+                            <CheckBox Content="Other" IsChecked="{Binding ShowLevelOther, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
+                        </WrapPanel>
+
+                        <DockPanel Margin="0,6,0,0">
+                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                                <TextBlock Text="Search" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBox x:Name="SearchBox" Width="300" KeyDown="SearchBox_KeyDown" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search text" />
+                                <CheckBox Content="Regex" IsChecked="{Binding SearchUseRegex, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0" ToolTip="Treat search as a regular expression" />
+                                <Button Content="First" Click="SearchFirst_Click" Margin="6,0,0,0" />
+                                <Button Content="Prev" Click="SearchPrevious_Click" Margin="4,0,0,0" />
+                                <Button Content="Next" Click="SearchNext_Click" Margin="4,0,0,0" />
+                                <Button Content="Last" Click="SearchLast_Click" Margin="4,0,0,0" />
+                                <Button Content="To Filter" Click="SearchToFilter_Click" Margin="6,0,0,0" ToolTip="Convert search regex to a saved filter" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <TextBlock Text="Auto-scroll" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <ComboBox Width="150" ItemsSource="{Binding AutoScrollOptions}" SelectedItem="{Binding AutoScrollMode, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </DockPanel>
+                    </StackPanel>
+                </Border>
+
+                <ListBox x:Name="TimelineList"
+                         Grid.Row="1"
+                         ItemsSource="{Binding TimelineEntries}"
+                         SelectionMode="Extended"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         ScrollViewer.CanContentScroll="True">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Padding" Value="0" />
+                            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="TimelineRow_MouseDown" />
+                            <EventSetter Event="PreviewMouseLeftButtonUp" Handler="TimelineRow_MouseUp" />
+                            <EventSetter Event="MouseEnter" Handler="TimelineRow_MouseEnter" />
+                            <EventSetter Event="PreviewMouseRightButtonDown" Handler="TimelineRow_PreviewMouseRightButtonDown" />
+                            <EventSetter Event="ContextMenuOpening" Handler="TimelineRow_ContextMenuOpening" />
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{Binding RowBackgroundBrush}"
+                                    BorderBrush="{Binding SelectionBorderBrush}"
+                                    BorderThickness="{Binding SelectionBorderThickness}"
+                                    Padding="4"
+                                    Opacity="{Binding RowOpacity}"
+                                    Tag="{Binding}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="112" />
+                                        <ColumnDefinition Width="88" />
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="170" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox IsChecked="{Binding IsSelectedForCopy, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top" />
+                                    <Border Grid.Column="1" Background="{Binding SourceBrush}" CornerRadius="3" Padding="5,2" Margin="0,0,6,0" VerticalAlignment="Top">
+                                        <TextBlock Text="{Binding DisplaySource}" Foreground="#0B1117" FontWeight="SemiBold" FontSize="11" />
+                                    </Border>
+                                    <TextBlock Grid.Column="2" Text="{Binding DisplayTime}" Foreground="{StaticResource TextMuted}" FontFamily="Consolas" VerticalAlignment="Top" />
+                                    <Border Grid.Column="3" Background="{Binding SeverityBrush}" CornerRadius="3" Padding="5,2" Margin="0,0,6,0" VerticalAlignment="Top">
+                                        <TextBlock Text="{Binding Severity}" Foreground="#0B1117" FontWeight="SemiBold" FontSize="11" HorizontalAlignment="Center" />
+                                    </Border>
+                                    <Expander Grid.Column="4" IsExpanded="{Binding IsExpanded, UpdateSourceTrigger=PropertyChanged}" Foreground="{StaticResource TextMain}">
+                                        <Expander.Header>
+                                            <TextBlock Text="{Binding Message}" FontFamily="Consolas" TextWrapping="NoWrap" />
+                                        </Expander.Header>
+                                        <TextBox Text="{Binding ContinuationText}" Visibility="{Binding HasContinuation, Converter={StaticResource BoolToVisibility}}" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" BorderThickness="0" Background="#0B1117" />
+                                    </Expander>
+                                    <ItemsControl Grid.Column="5" ItemsSource="{Binding FilterBadges}" ItemTemplate="{StaticResource BadgeTemplate}" VerticalAlignment="Top">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+
+            <Border Grid.Column="3" x:Name="ChecklistPanel" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1,0,0,0" Padding="8" Visibility="Collapsed">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="145" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <DockPanel>
+                        <TextBlock Text="Checklist Runner" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" />
+                        <Button Content="Close" DockPanel.Dock="Right" HorizontalAlignment="Right" Click="ToggleChecklist_Click" />
+                    </DockPanel>
+                    <TextBlock Grid.Row="0" Text="Paste script text below, or use Sample, then Parse." Foreground="{StaticResource TextMuted}" FontSize="11" Margin="0,28,0,0" />
+                    <TextBox x:Name="ChecklistTextBox"
+                             Grid.Row="1"
+                             Margin="0,8,0,4"
+                             AcceptsReturn="True"
+                             VerticalScrollBarVisibility="Auto"
+                             Text="{Binding ChecklistText, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Paste checklist syntax here" />
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,4,0,8">
+                        <Button Content="Parse" Click="ParseChecklist_Click" />
+                        <Button Content="Paste" Click="PasteChecklist_Click" Margin="6,0,0,0" />
+                        <Button Content="Sample" Click="SampleChecklist_Click" Margin="6,0,0,0" />
+                        <Button Content="Clear" Click="ClearChecklist_Click" Margin="6,0,0,0" />
+                    </StackPanel>
+                    <ListBox Grid.Row="3"
+                             ItemsSource="{Binding ChecklistItems}"
+                             ItemTemplate="{StaticResource ChecklistTemplate}"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling" />
+                </Grid>
+            </Border>
+        </Grid>
+
+        <StatusBar Grid.Row="2" Background="{StaticResource PanelBg2}" Foreground="{StaticResource TextMuted}">
+            <StatusBarItem>
+                <TextBlock>
+                    <Run Text="Visible entries: " />
+                    <Run Text="{Binding VisibleEntryCount}" />
+                </TextBlock>
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock>
+                    <Run Text="Loaded entries: " />
+                    <Run Text="{Binding LoadedEntryCount}" />
+                </TextBlock>
+            </StatusBarItem>
+            <Separator />
+            <StatusBarItem>
+                <TextBlock>
+                    <Run Text="Search: " />
+                    <Run Text="{Binding SearchStatusText}" />
+                </TextBlock>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>

@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{C284F485-EFB0-43B7-B152-79A4AEC7DE2C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VLIT", "src\VLIT\VLIT.csproj", "{D6C8318A-4E9A-4C73-AF7F-AE4A06E96563}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{050FAED0-C404-47EA-93BD-77744EE78AB1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VLIT.SmokeTests", "tests\VLIT.SmokeTests\VLIT.SmokeTests.csproj", "{DCB74AA5-A936-4E24-A80B-F830A9A9C444}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D6C8318A-4E9A-4C73-AF7F-AE4A06E96563}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D6C8318A-4E9A-4C73-AF7F-AE4A06E96563}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D6C8318A-4E9A-4C73-AF7F-AE4A06E96563}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D6C8318A-4E9A-4C73-AF7F-AE4A06E96563}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DCB74AA5-A936-4E24-A80B-F830A9A9C444}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DCB74AA5-A936-4E24-A80B-F830A9A9C444}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DCB74AA5-A936-4E24-A80B-F830A9A9C444}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DCB74AA5-A936-4E24-A80B-F830A9A9C444}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{D6C8318A-4E9A-4C73-AF7F-AE4A06E96563} = {C284F485-EFB0-43B7-B152-79A4AEC7DE2C}
+		{DCB74AA5-A936-4E24-A80B-F830A9A9C444} = {050FAED0-C404-47EA-93BD-77744EE78AB1}
+	EndGlobalSection
+EndGlobal
