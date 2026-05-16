@@ -561,20 +561,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         item.Focus();
+        item.ContextMenu = BuildLogFileContextMenu();
     }
 
-    private void LogFileRow_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    private ContextMenu BuildLogFileContextMenu()
     {
-        if (sender is not ListBoxItem item)
-        {
-            return;
-        }
-
         var menu = new ContextMenu();
         var delete = new MenuItem { Header = "Delete selected log file(s)" };
         delete.Click += DeleteSelectedLogs_Click;
         menu.Items.Add(delete);
-        item.ContextMenu = menu;
+        return menu;
     }
 
     private void AddFilter_Click(object sender, RoutedEventArgs e)
@@ -720,6 +716,26 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         StatusText = $"Reviewed marker moved to {entry.DisplayTime}.";
     }
 
+    private void RemoveMarker(TimelineEntry entry)
+    {
+        if (!entry.IsMarker || !entry.LineKey.StartsWith("marker:", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var markerId = entry.LineKey["marker:".Length..];
+        var removed = _markers.RemoveAll(marker => marker.Id.Equals(markerId, StringComparison.OrdinalIgnoreCase));
+        if (removed == 0)
+        {
+            return;
+        }
+
+        _hiddenLineKeys.Remove(entry.LineKey);
+        ApplyTimelineFilters();
+        SaveSettings();
+        StatusText = "Marker removed.";
+    }
+
     private void TimelineRow_MouseDown(object sender, MouseButtonEventArgs e)
     {
         if (FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) is not null)
@@ -803,15 +819,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         TimelineList.SelectedItem = entry;
         item.Focus();
+        item.ContextMenu = BuildTimelineContextMenu(entry);
     }
 
-    private void TimelineRow_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    private ContextMenu BuildTimelineContextMenu(TimelineEntry entry)
     {
-        if (sender is not ListBoxItem item || item.DataContext is not TimelineEntry)
-        {
-            return;
-        }
-
         var menu = new ContextMenu();
         var copy = new MenuItem { Header = "Copy selected line(s)" };
         copy.Click += CopySelected_Click;
@@ -827,7 +839,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         menu.Items.Add(new Separator());
         menu.Items.Add(marker);
         menu.Items.Add(reviewed);
-        item.ContextMenu = menu;
+
+        if (entry.IsMarker)
+        {
+            var removeMarker = new MenuItem { Header = "Remove marker" };
+            removeMarker.Click += (_, _) => RemoveMarker(entry);
+            menu.Items.Add(new Separator());
+            menu.Items.Add(removeMarker);
+        }
+
+        return menu;
     }
 
     private void ClearTimelineSelection()
@@ -1703,6 +1724,17 @@ ordered: Multiplayer smoke test
         if (_isLoading)
         {
             return;
+        }
+
+        if (sender is LogFileItem file)
+        {
+            _settings.FileStates[file.FileKey] = new LogFileState
+            {
+                Alias = file.Alias,
+                Color = file.Color,
+                IncludeInTimeline = file.IncludeInTimeline,
+                IsVisible = file.IsVisible
+            };
         }
 
         SaveSettings();

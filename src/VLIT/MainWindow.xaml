@@ -50,8 +50,8 @@
                     <Button Padding="0" Tag="{Binding}" Click="CycleLogColor_Click" ToolTip="Cycle file color">
                         <Rectangle Width="14" Height="14" Fill="{Binding ColorBrush}" RadiusX="2" RadiusY="2" />
                     </Button>
-                    <CheckBox Grid.Column="1" IsChecked="{Binding IncludeInTimeline, UpdateSourceTrigger=PropertyChanged}" ToolTip="Include in merged timeline" />
-                    <CheckBox Grid.Column="2" IsChecked="{Binding IsVisible, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IncludeInTimeline}" ToolTip="Show included entries" />
+                    <CheckBox Grid.Column="1" IsChecked="{Binding IncludeInTimeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTip="Include in merged timeline" />
+                    <CheckBox Grid.Column="2" IsChecked="{Binding IsVisible, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IncludeInTimeline}" ToolTip="Show included entries" />
                     <StackPanel Grid.Column="3">
                         <TextBox Text="{Binding Alias, UpdateSourceTrigger=PropertyChanged}" ToolTip="Client alias" />
                         <TextBlock Text="{Binding FileName}" Foreground="{StaticResource TextMuted}" FontSize="11" />
@@ -169,7 +169,6 @@
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                 <EventSetter Event="PreviewMouseRightButtonDown" Handler="LogFileRow_PreviewMouseRightButtonDown" />
-                                <EventSetter Event="ContextMenuOpening" Handler="LogFileRow_ContextMenuOpening" />
                             </Style>
                         </ListBox.ItemContainerStyle>
                     </ListBox>
@@ -240,7 +239,6 @@
                             <EventSetter Event="PreviewMouseLeftButtonUp" Handler="TimelineRow_MouseUp" />
                             <EventSetter Event="MouseEnter" Handler="TimelineRow_MouseEnter" />
                             <EventSetter Event="PreviewMouseRightButtonDown" Handler="TimelineRow_PreviewMouseRightButtonDown" />
-                            <EventSetter Event="ContextMenuOpening" Handler="TimelineRow_ContextMenuOpening" />
                         </Style>
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
