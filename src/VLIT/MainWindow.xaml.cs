@@ -29,6 +29,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isDraggingTimelineSelection;
     private bool _dragSelectionValue;
     private bool _isEvaluatingChecklist;
+    private bool _hasCompletedInitialDiscovery;
     private string _reviewedLineKey = string.Empty;
     private string _statusText = "Ready";
     private string _searchStatusText = "0 matches";
@@ -359,6 +360,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         DisposeWatchers();
     }
 
+    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key != Key.A || !IsControlDown() || IsTextInputFocused())
+        {
+            return;
+        }
+
+        SelectAllTimelineEntries();
+        e.Handled = true;
+    }
+
     private async void Refresh_Click(object sender, RoutedEventArgs e)
     {
         await RefreshAllAsync();
@@ -661,7 +673,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void CopySelected_Click(object sender, RoutedEventArgs e)
     {
-        var entries = CheckedOrSelectedTimelineEntries();
+        CopyEntries(CheckedOrSelectedTimelineEntries());
+    }
+
+    private void CopyEntries(IReadOnlyList<TimelineEntry> entries)
+    {
         if (entries.Count == 0)
         {
             StatusText = "No checked or selected timeline entries to copy.";
@@ -674,7 +690,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void HideSelected_Click(object sender, RoutedEventArgs e)
     {
-        var entries = CheckedOrSelectedTimelineEntries();
+        HideEntries(CheckedOrSelectedTimelineEntries());
+    }
+
+    private void HideEntries(IReadOnlyCollection<TimelineEntry> entries)
+    {
         if (entries.Count == 0)
         {
             StatusText = "No checked or selected timeline entries to hide.";
@@ -704,7 +724,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ContextReviewed_Click(object sender, RoutedEventArgs e)
     {
-        var entry = GetContextTimelineEntry(sender);
+        MarkReviewed(GetContextTimelineEntry(sender));
+    }
+
+    private void MarkReviewed(TimelineEntry? entry)
+    {
         if (entry is null)
         {
             return;
@@ -716,24 +740,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         StatusText = $"Reviewed marker moved to {entry.DisplayTime}.";
     }
 
-    private void RemoveMarker(TimelineEntry entry)
+    private void RemoveMarkers(IReadOnlyCollection<TimelineEntry> entries)
     {
-        if (!entry.IsMarker || !entry.LineKey.StartsWith("marker:", StringComparison.OrdinalIgnoreCase))
+        var markerIds = entries
+            .Where(entry => entry.IsMarker && entry.LineKey.StartsWith("marker:", StringComparison.OrdinalIgnoreCase))
+            .Select(entry => entry.LineKey["marker:".Length..])
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (markerIds.Count == 0)
         {
             return;
         }
 
-        var markerId = entry.LineKey["marker:".Length..];
-        var removed = _markers.RemoveAll(marker => marker.Id.Equals(markerId, StringComparison.OrdinalIgnoreCase));
+        var removed = _markers.RemoveAll(marker => markerIds.Contains(marker.Id));
         if (removed == 0)
         {
             return;
         }
 
-        _hiddenLineKeys.Remove(entry.LineKey);
+        foreach (var entry in entries)
+        {
+            _hiddenLineKeys.Remove(entry.LineKey);
+        }
+
         ApplyTimelineFilters();
         SaveSettings();
-        StatusText = "Marker removed.";
+        StatusText = removed == 1 ? "Marker removed." : $"{removed:n0} markers removed.";
     }
 
     private void TimelineRow_MouseDown(object sender, MouseButtonEventArgs e)
@@ -811,28 +843,39 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        if (!entry.IsSelectedForCopy && !IsControlDown())
+        if (!entry.IsSelectedForCopy)
         {
-            ClearTimelineSelection();
+            if (!IsControlDown())
+            {
+                ClearTimelineSelection();
+            }
+
             entry.IsSelectedForCopy = true;
         }
 
         TimelineList.SelectedItem = entry;
+        _lastSelectionAnchor = entry;
         item.Focus();
         item.ContextMenu = BuildTimelineContextMenu(entry);
     }
 
     private ContextMenu BuildTimelineContextMenu(TimelineEntry entry)
     {
+        var contextEntries = GetTimelineContextEntries(entry);
+        var anchor = contextEntries
+            .OrderBy(e => e.SortTicks)
+            .ThenBy(e => e.SourceToken)
+            .ThenBy(e => e.LineNumber)
+            .LastOrDefault() ?? entry;
         var menu = new ContextMenu();
-        var copy = new MenuItem { Header = "Copy selected line(s)" };
-        copy.Click += CopySelected_Click;
-        var hide = new MenuItem { Header = "Hide selected line(s)" };
-        hide.Click += HideSelected_Click;
-        var marker = new MenuItem { Header = "Insert marker after this line" };
-        marker.Click += ContextAddMarker_Click;
-        var reviewed = new MenuItem { Header = "Reviewed up to here" };
-        reviewed.Click += ContextReviewed_Click;
+        var copy = new MenuItem { Header = contextEntries.Count == 1 ? "Copy selected line" : $"Copy {contextEntries.Count:n0} selected lines" };
+        copy.Click += (_, _) => CopyEntries(contextEntries);
+        var hide = new MenuItem { Header = contextEntries.Count == 1 ? "Hide selected line" : $"Hide {contextEntries.Count:n0} selected lines" };
+        hide.Click += (_, _) => HideEntries(contextEntries);
+        var marker = new MenuItem { Header = contextEntries.Count == 1 ? "Insert marker after this line" : "Insert marker after last selected line" };
+        marker.Click += (_, _) => InsertPromptedMarker(anchor);
+        var reviewed = new MenuItem { Header = contextEntries.Count == 1 ? "Reviewed up to here" : "Reviewed through selected lines" };
+        reviewed.Click += (_, _) => MarkReviewed(anchor);
 
         menu.Items.Add(copy);
         menu.Items.Add(hide);
@@ -840,15 +883,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         menu.Items.Add(marker);
         menu.Items.Add(reviewed);
 
-        if (entry.IsMarker)
+        if (contextEntries.Any(e => e.IsMarker))
         {
-            var removeMarker = new MenuItem { Header = "Remove marker" };
-            removeMarker.Click += (_, _) => RemoveMarker(entry);
+            var removeMarker = new MenuItem { Header = "Remove Marker(s)" };
+            removeMarker.Click += (_, _) => RemoveMarkers(contextEntries);
             menu.Items.Add(new Separator());
             menu.Items.Add(removeMarker);
         }
 
         return menu;
+    }
+
+    private List<TimelineEntry> GetTimelineContextEntries(TimelineEntry fallback)
+    {
+        var entries = CheckedOrSelectedTimelineEntries();
+        return entries.Count > 0 ? entries : [fallback];
     }
 
     private void ClearTimelineSelection()
@@ -857,6 +906,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             timelineEntry.IsSelectedForCopy = false;
         }
+    }
+
+    private void SelectAllTimelineEntries()
+    {
+        foreach (var entry in TimelineEntries)
+        {
+            entry.IsSelectedForCopy = true;
+        }
+
+        _lastSelectionAnchor = TimelineEntries.FirstOrDefault();
+        TimelineList.Focus();
+        StatusText = $"Selected {TimelineEntries.Count:n0} visible entries.";
     }
 
     private void SelectTimelineRange(TimelineEntry? start, TimelineEntry end, bool additive)
@@ -896,6 +957,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private static bool IsShiftDown()
     {
         return Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
+    }
+
+    private static bool IsTextInputFocused()
+    {
+        return Keyboard.FocusedElement is DependencyObject focused &&
+            FindAncestor<TextBoxBase>(focused) is not null;
     }
 
     private void ToggleChecklist_Click(object sender, RoutedEventArgs e)
@@ -979,6 +1046,7 @@ ordered: Multiplayer smoke test
         {
             StatusText = "Scanning sources...";
             await DiscoverLogFilesAsync();
+            _hasCompletedInitialDiscovery = true;
             ConfigureWatchers();
             await ParseIncludedLogsAsync();
             StatusText = $"Ready. {LogFiles.Count:n0} log files discovered.";
@@ -1023,16 +1091,21 @@ ordered: Multiplayer smoke test
 
                     if (!currentByKey.TryGetValue(key, out var item))
                     {
-                        _settings.FileStates.TryGetValue(key, out var saved);
+                        var hasSavedState = _settings.FileStates.TryGetValue(key, out var saved);
+                        var savedState = hasSavedState ? saved : null;
+                        var includeByDefault = savedState?.IncludeInTimeline ?? _hasCompletedInitialDiscovery;
+                        var showByDefault = savedState is not null
+                            ? savedState.IncludeInTimeline && savedState.IsVisible
+                            : _hasCompletedInitialDiscovery;
                         item = new LogFileItem
                         {
                             FilePath = path,
                             SourceId = source.Id,
                             SourceToken = source.Token,
-                            Alias = string.IsNullOrWhiteSpace(saved?.Alias) ? $"Client {index + 1}" : saved.Alias,
-                            Color = saved?.Color ?? Palette.At(index + 2),
-                            IncludeInTimeline = saved?.IncludeInTimeline ?? index < 6,
-                            IsVisible = saved?.IsVisible ?? index < 6,
+                            Alias = string.IsNullOrWhiteSpace(savedState?.Alias) ? $"Client {index + 1}" : savedState.Alias,
+                            Color = savedState?.Color ?? Palette.At(index + 2),
+                            IncludeInTimeline = includeByDefault,
+                            IsVisible = showByDefault,
                             StartTimestamp = start,
                             LastActivityTimestamp = lastActivity,
                             LengthBytes = info.Exists ? info.Length : 0,
@@ -1189,16 +1262,7 @@ ordered: Multiplayer smoke test
             return false;
         }
 
-        if (!IsSeverityVisible(entry.Severity))
-        {
-            return false;
-        }
-
-        if (activeFilters.Count == 0)
-        {
-            return true;
-        }
-
+        var alwaysShowByLevel = IsAlwaysShowLevel(entry.Severity);
         foreach (var (filter, regex) in activeFilters)
         {
             if (FilterMatches(entry.FullText, filter, regex))
@@ -1207,7 +1271,7 @@ ordered: Multiplayer smoke test
             }
         }
 
-        return entry.FilterBadges.Count > 0 || ShowUnfilteredLines;
+        return entry.FilterBadges.Count > 0 || alwaysShowByLevel || ShowUnfilteredLines;
     }
 
     private List<TimelineEntry> BuildMarkerEntries()
@@ -1226,7 +1290,7 @@ ordered: Multiplayer smoke test
         }).Where(e => ShowHiddenLines || !_hiddenLineKeys.Contains(e.LineKey)).ToList();
     }
 
-    private bool IsSeverityVisible(string severity)
+    private bool IsAlwaysShowLevel(string severity)
     {
         var normalized = NormalizeSeverityGroup(severity);
         return normalized switch

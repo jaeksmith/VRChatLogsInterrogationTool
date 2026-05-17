@@ -188,9 +188,9 @@ public sealed class LogFileItem : ObservableObject
         get => _includeInTimeline;
         set
         {
-            if (SetProperty(ref _includeInTimeline, value) && !value)
+            if (SetProperty(ref _includeInTimeline, value))
             {
-                IsVisible = false;
+                IsVisible = value;
             }
         }
     }

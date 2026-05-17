@@ -13,6 +13,7 @@
         MinWidth="1180"
         Loaded="Window_Loaded"
         Closing="Window_Closing"
+        PreviewKeyDown="Window_PreviewKeyDown"
         Background="{StaticResource AppBg}">
     <Window.Resources>
         <DataTemplate x:Key="SourceTemplate">
@@ -185,27 +186,7 @@
 
                 <Border Grid.Row="0" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1" Padding="8">
                     <StackPanel>
-                        <WrapPanel>
-                            <ItemsControl ItemsSource="{Binding Filters}" ItemTemplate="{StaticResource FilterTemplate}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                            </ItemsControl>
-                            <Button Content="Add Filter" Click="AddFilter_Click" Margin="0,0,6,4" />
-                            <CheckBox Content="Show unmatched" IsChecked="{Binding ShowUnfilteredLines, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
-                            <CheckBox Content="Show hidden" IsChecked="{Binding ShowHiddenLines, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
-                            <CheckBox Content="Show markers" IsChecked="{Binding ShowMarkers, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
-                            <TextBlock Text="Levels" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="8,0,6,4" />
-                            <CheckBox Content="Error" IsChecked="{Binding ShowLevelError, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
-                            <CheckBox Content="Warning" IsChecked="{Binding ShowLevelWarning, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
-                            <CheckBox Content="Debug" IsChecked="{Binding ShowLevelDebug, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
-                            <CheckBox Content="Log/Info" IsChecked="{Binding ShowLevelLog, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
-                            <CheckBox Content="Other" IsChecked="{Binding ShowLevelOther, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
-                        </WrapPanel>
-
-                        <DockPanel Margin="0,6,0,0">
+                        <DockPanel>
                             <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                                 <TextBlock Text="Search" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <TextBox x:Name="SearchBox" Width="300" KeyDown="SearchBox_KeyDown" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search text" />
@@ -214,13 +195,38 @@
                                 <Button Content="Prev" Click="SearchPrevious_Click" Margin="4,0,0,0" />
                                 <Button Content="Next" Click="SearchNext_Click" Margin="4,0,0,0" />
                                 <Button Content="Last" Click="SearchLast_Click" Margin="4,0,0,0" />
-                                <Button Content="To Filter" Click="SearchToFilter_Click" Margin="6,0,0,0" ToolTip="Convert search regex to a saved filter" />
+                                <Button Content="Add Filter" Click="SearchToFilter_Click" Margin="6,0,0,0" ToolTip="Create a filter from the current search" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                 <TextBlock Text="Auto-scroll" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <ComboBox Width="150" Foreground="#101820" ItemsSource="{Binding AutoScrollOptions}" SelectedItem="{Binding AutoScrollMode, UpdateSourceTrigger=PropertyChanged}" />
+                                <ComboBox Width="150" Foreground="#101820" Background="#FFFFFF" ItemsSource="{Binding AutoScrollOptions}" SelectedItem="{Binding AutoScrollMode, UpdateSourceTrigger=PropertyChanged}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" Foreground="#101820" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
                             </StackPanel>
                         </DockPanel>
+
+                        <WrapPanel Margin="0,6,0,0">
+                            <ItemsControl ItemsSource="{Binding Filters}" ItemTemplate="{StaticResource FilterTemplate}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                            <CheckBox Content="Show unmatched" IsChecked="{Binding ShowUnfilteredLines, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
+                            <CheckBox Content="Show hidden" IsChecked="{Binding ShowHiddenLines, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
+                            <CheckBox Content="Show markers" IsChecked="{Binding ShowMarkers, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
+                            <TextBlock Text="Always Show Levels" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="8,0,6,4" />
+                            <CheckBox Content="Error" IsChecked="{Binding ShowLevelError, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
+                            <CheckBox Content="Warning" IsChecked="{Binding ShowLevelWarning, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
+                            <CheckBox Content="Debug" IsChecked="{Binding ShowLevelDebug, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
+                            <CheckBox Content="Log/Info" IsChecked="{Binding ShowLevelLog, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,4" />
+                            <CheckBox Content="Other" IsChecked="{Binding ShowLevelOther, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,12,4" />
+                        </WrapPanel>
                     </StackPanel>
                 </Border>
 
