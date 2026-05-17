@@ -782,8 +782,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void TimelineRow_MouseDown(object sender, MouseButtonEventArgs e)
     {
         var original = e.OriginalSource as DependencyObject;
-        if (FindAncestor<ButtonBase>(original) is not null ||
-            FindAncestor<TextBoxBase>(original) is not null)
+        if (FindAncestor<ButtonBase>(original) is { } button)
+        {
+            if (button.Name == "ExpandToggleButton" &&
+                button.DataContext is TimelineEntry toggleEntry)
+            {
+                toggleEntry.IsExpanded = !toggleEntry.IsExpanded;
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        if (FindAncestor<TextBoxBase>(original) is not null)
         {
             return;
         }
@@ -835,6 +846,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _isDraggingTimelineSelection = false;
         _dragStartEntry = null;
         Mouse.Capture(null);
+    }
+
+    private void ExpandToggle_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is TimelineEntry entry)
+        {
+            entry.IsExpanded = !entry.IsExpanded;
+            e.Handled = true;
+        }
     }
 
     private void TimelineCheckBox_Click(object sender, RoutedEventArgs e)

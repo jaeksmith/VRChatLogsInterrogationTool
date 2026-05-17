@@ -296,18 +296,20 @@
                                             <ColumnDefinition Width="24" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <ToggleButton Width="18"
-                                                      Height="18"
-                                                      Padding="0"
-                                                      HorizontalContentAlignment="Center"
-                                                      VerticalContentAlignment="Center"
-                                                      IsChecked="{Binding IsExpanded, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                      Visibility="{Binding HasContinuation, Converter={StaticResource BoolToVisibility}}"
-                                                      Foreground="{StaticResource TextMain}"
-                                                      Background="{StaticResource ControlBg}"
-                                                      BorderBrush="{StaticResource BorderSubtle}">
+                                        <Button x:Name="ExpandToggleButton"
+                                                Width="18"
+                                                Height="18"
+                                                Padding="0"
+                                                HorizontalContentAlignment="Center"
+                                                VerticalContentAlignment="Center"
+                                                Visibility="{Binding HasContinuation, Converter={StaticResource BoolToVisibility}}"
+                                                Foreground="{StaticResource TextMain}"
+                                                Background="{StaticResource ControlBg}"
+                                                BorderBrush="{StaticResource BorderSubtle}"
+                                                Click="ExpandToggle_Click"
+                                                ToolTip="Expand multiline entry">
                                             <TextBlock Text="{Binding ExpandGlyph}" Foreground="{StaticResource TextMain}" FontSize="10" HorizontalAlignment="Center" />
-                                        </ToggleButton>
+                                        </Button>
                                         <StackPanel Grid.Column="1">
                                             <TextBlock Text="{Binding Message}" FontFamily="Consolas" TextWrapping="NoWrap" />
                                             <TextBox Text="{Binding ContinuationText}" Visibility="{Binding ContinuationVisibility}" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" BorderThickness="0" Background="#0B1117" />
