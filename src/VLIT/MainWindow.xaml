@@ -300,6 +300,7 @@
                                                 Width="18"
                                                 Height="18"
                                                 Padding="0"
+                                                VerticalAlignment="Top"
                                                 HorizontalContentAlignment="Center"
                                                 VerticalContentAlignment="Center"
                                                 Visibility="{Binding HasContinuation, Converter={StaticResource BoolToVisibility}}"
@@ -312,7 +313,7 @@
                                         </Button>
                                         <StackPanel Grid.Column="1">
                                             <TextBlock Text="{Binding Message}" FontFamily="Consolas" TextWrapping="NoWrap" />
-                                            <TextBox Text="{Binding ContinuationText}" Visibility="{Binding ContinuationVisibility}" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" BorderThickness="0" Background="#0B1117" />
+                                            <TextBlock Text="{Binding ContinuationText}" Visibility="{Binding ContinuationVisibility}" TextWrapping="Wrap" FontFamily="Consolas" />
                                         </StackPanel>
                                     </Grid>
                                     <ItemsControl Grid.Column="6" ItemsSource="{Binding FilterBadges}" ItemTemplate="{StaticResource BadgeTemplate}" VerticalAlignment="Top">
