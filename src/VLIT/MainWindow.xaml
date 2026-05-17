@@ -284,7 +284,7 @@
                                     <Border Grid.Column="1" Background="{Binding SourceBrush}" CornerRadius="3" Padding="5,2" Margin="0,0,6,0" VerticalAlignment="Top">
                                         <TextBlock Text="{Binding DisplaySourceTag}" Foreground="#0B1117" FontWeight="SemiBold" FontSize="11" />
                                     </Border>
-                                    <Border Grid.Column="2" Background="{Binding SourceBrush}" CornerRadius="3" Padding="5,2" Margin="0,0,6,0" VerticalAlignment="Top" Visibility="{Binding FileTagVisibility}">
+                                    <Border Grid.Column="2" Background="{Binding FileBrush}" CornerRadius="3" Padding="5,2" Margin="0,0,6,0" VerticalAlignment="Top" Visibility="{Binding FileTagVisibility}">
                                         <TextBlock Text="{Binding DisplayFileTag}" Foreground="#0B1117" FontWeight="SemiBold" FontSize="11" />
                                     </Border>
                                     <TextBlock Grid.Column="3" Text="{Binding DisplayTime}" Foreground="{StaticResource TextMuted}" FontFamily="Consolas" VerticalAlignment="Top" />

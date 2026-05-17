@@ -363,13 +363,23 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (e.Key != Key.A || !IsControlDown() || IsTextInputFocused())
+        if (!IsControlDown() || IsTextInputFocused())
         {
             return;
         }
 
-        SelectAllTimelineEntries();
-        e.Handled = true;
+        if (e.Key == Key.A)
+        {
+            SelectAllTimelineEntries();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.C)
+        {
+            CopyEntries(CheckedOrSelectedTimelineEntries());
+            e.Handled = true;
+        }
     }
 
     private async void Refresh_Click(object sender, RoutedEventArgs e)
@@ -771,7 +781,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void TimelineRow_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (FindAncestor<CheckBox>(e.OriginalSource as DependencyObject) is not null)
+        var original = e.OriginalSource as DependencyObject;
+        if (FindAncestor<ButtonBase>(original) is not null ||
+            FindAncestor<TextBoxBase>(original) is not null)
         {
             return;
         }
@@ -1104,6 +1116,7 @@ ordered: Multiplayer smoke test
                             FilePath = path,
                             SourceId = source.Id,
                             SourceToken = source.Token,
+                            SourceColor = source.Color,
                             Alias = string.IsNullOrWhiteSpace(savedState?.Alias) ? $"Client {index + 1}" : savedState.Alias,
                             Color = savedState?.Color ?? Palette.At(index + 2),
                             IncludeInTimeline = includeByDefault,
@@ -1119,6 +1132,7 @@ ordered: Multiplayer smoke test
                     {
                         item.SourceId = source.Id;
                         item.SourceToken = source.Token;
+                        item.SourceColor = source.Color;
                         item.StartTimestamp = start;
                         item.LastActivityTimestamp = lastActivity;
                         item.LengthBytes = info.Exists ? info.Length : 0;
@@ -1778,11 +1792,26 @@ ordered: Multiplayer smoke test
             return;
         }
 
+        if (sender is SourceDirectoryItem source &&
+            e.PropertyName is nameof(SourceDirectoryItem.Token) or nameof(SourceDirectoryItem.Color))
+        {
+            UpdateLogFilesForSource(source);
+        }
+
         SaveSettings();
         if (e.PropertyName is nameof(SourceDirectoryItem.Token) or nameof(SourceDirectoryItem.Color))
         {
             _parseDebounce.Stop();
             _parseDebounce.Start();
+        }
+    }
+
+    private void UpdateLogFilesForSource(SourceDirectoryItem source)
+    {
+        foreach (var file in LogFiles.Where(f => f.SourceId == source.Id))
+        {
+            file.SourceToken = source.Token;
+            file.SourceColor = source.Color;
         }
     }
 

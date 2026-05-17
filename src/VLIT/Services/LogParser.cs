@@ -133,7 +133,8 @@ public static partial class LogParser
             Severity = pending.Severity,
             Message = pending.Message,
             ContinuationText = pending.Continuation.ToString(),
-            SourceColor = file.Color,
+            SourceColor = file.SourceColor,
+            FileColor = file.Color,
             SortTicks = pending.Timestamp.Ticks + (sequence * SortStrideTicks)
         });
     }

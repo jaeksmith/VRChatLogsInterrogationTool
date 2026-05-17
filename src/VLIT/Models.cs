@@ -118,6 +118,7 @@ public sealed class LogFileItem : ObservableObject
     private string _filePath = string.Empty;
     private string _sourceId = string.Empty;
     private string _sourceToken = string.Empty;
+    private string _sourceColor = Palette.At(0);
     private string _alias = string.Empty;
     private string _color = Palette.At(0);
     private bool _includeInTimeline;
@@ -157,6 +158,12 @@ public sealed class LogFileItem : ObservableObject
                 OnPropertyChanged(nameof(MetadataText));
             }
         }
+    }
+
+    public string SourceColor
+    {
+        get => _sourceColor;
+        set => SetProperty(ref _sourceColor, value);
     }
 
     public string Alias
@@ -402,6 +409,7 @@ public sealed class TimelineEntry : ObservableObject
     public string Message { get; init; } = string.Empty;
     public string ContinuationText { get; init; } = string.Empty;
     public string SourceColor { get; init; } = "#4CC9F0";
+    public string FileColor { get; init; } = "#4CC9F0";
     public bool IsMarker { get; init; }
     public bool IsReviewMarker { get; init; }
 
@@ -490,6 +498,9 @@ public sealed class TimelineEntry : ObservableObject
 
     [JsonIgnore]
     public SolidColorBrush SourceBrush => IsMarker ? Palette.Brush("#F4D35E") : Palette.Brush(SourceColor);
+
+    [JsonIgnore]
+    public SolidColorBrush FileBrush => IsMarker ? Palette.Brush("#F4D35E") : Palette.Brush(FileColor);
 
     [JsonIgnore]
     public SolidColorBrush SeverityBrush => Severity.ToUpperInvariant() switch
