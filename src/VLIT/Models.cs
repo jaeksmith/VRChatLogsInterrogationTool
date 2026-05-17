@@ -428,7 +428,14 @@ public sealed class TimelineEntry : ObservableObject
     public bool IsExpanded
     {
         get => _isExpanded;
-        set => SetProperty(ref _isExpanded, value);
+        set
+        {
+            if (SetProperty(ref _isExpanded, value))
+            {
+                OnPropertyChanged(nameof(ExpandGlyph));
+                OnPropertyChanged(nameof(ContinuationVisibility));
+            }
+        }
     }
 
     public bool IsHidden
@@ -467,7 +474,19 @@ public sealed class TimelineEntry : ObservableObject
     public string DisplayTime => Timestamp.ToString("HH:mm:ss.fff");
 
     [JsonIgnore]
-    public string DisplaySource => IsMarker ? "MARK" : $"{SourceToken}:{FileAlias}";
+    public string DisplaySourceTag => IsMarker ? "MARK" : SourceToken;
+
+    [JsonIgnore]
+    public string DisplayFileTag => IsMarker ? string.Empty : FileAlias;
+
+    [JsonIgnore]
+    public Visibility FileTagVisibility => IsMarker ? Visibility.Collapsed : Visibility.Visible;
+
+    [JsonIgnore]
+    public string ExpandGlyph => IsExpanded ? "▼" : "▶";
+
+    [JsonIgnore]
+    public Visibility ContinuationVisibility => IsExpanded && HasContinuation ? Visibility.Visible : Visibility.Collapsed;
 
     [JsonIgnore]
     public SolidColorBrush SourceBrush => IsMarker ? Palette.Brush("#F4D35E") : Palette.Brush(SourceColor);

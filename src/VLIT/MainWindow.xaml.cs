@@ -52,6 +52,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private TimelineEntry? _dragStartEntry;
     private bool _dragSelectionIsAdditive;
     private TimelineEntry? _lastSelectionAnchor;
+    private bool _lastSelectionValue = true;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -782,13 +783,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (IsShiftDown())
         {
-            SelectTimelineRange(_lastSelectionAnchor ?? TimelineEntries.FirstOrDefault(e => e.IsSelectedForCopy) ?? entry, entry, IsControlDown());
-            _lastSelectionAnchor ??= entry;
+            var preserveExisting = IsControlDown() || !_lastSelectionValue;
+            SelectTimelineRange(_lastSelectionAnchor ?? TimelineEntries.FirstOrDefault(e => e.IsSelectedForCopy) ?? entry, entry, _lastSelectionValue, preserveExisting);
             e.Handled = true;
             return;
         }
 
-        _dragSelectionIsAdditive = IsControlDown();
+        _dragSelectionValue = IsControlDown() ? !entry.IsSelectedForCopy : true;
+        _dragSelectionIsAdditive = IsControlDown() || !_dragSelectionValue;
         if (!_dragSelectionIsAdditive)
         {
             ClearTimelineSelection();
@@ -796,9 +798,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _isDraggingTimelineSelection = true;
         _dragStartEntry = entry;
-        _dragSelectionValue = true;
         entry.IsSelectedForCopy = _dragSelectionValue;
         _lastSelectionAnchor = entry;
+        _lastSelectionValue = _dragSelectionValue;
         Mouse.Capture(sender as IInputElement);
         e.Handled = true;
     }
@@ -812,7 +814,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (GetTimelineEntryFromSender(sender) is { } entry)
         {
-            SelectTimelineRange(_dragStartEntry, entry, _dragSelectionIsAdditive);
+            SelectTimelineRange(_dragStartEntry, entry, _dragSelectionValue, _dragSelectionIsAdditive);
         }
     }
 
@@ -829,10 +831,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             sender is CheckBox checkBox)
         {
             entry.IsSelectedForCopy = checkBox.IsChecked == true;
-            if (entry.IsSelectedForCopy)
-            {
-                _lastSelectionAnchor = entry;
-            }
+            _lastSelectionAnchor = entry;
+            _lastSelectionValue = entry.IsSelectedForCopy;
         }
     }
 
@@ -851,10 +851,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             entry.IsSelectedForCopy = true;
+            _lastSelectionAnchor = entry;
+            _lastSelectionValue = true;
         }
 
         TimelineList.SelectedItem = entry;
-        _lastSelectionAnchor = entry;
         item.Focus();
         item.ContextMenu = BuildTimelineContextMenu(entry);
     }
@@ -916,19 +917,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _lastSelectionAnchor = TimelineEntries.FirstOrDefault();
+        _lastSelectionValue = true;
         TimelineList.Focus();
         StatusText = $"Selected {TimelineEntries.Count:n0} visible entries.";
     }
 
-    private void SelectTimelineRange(TimelineEntry? start, TimelineEntry end, bool additive)
+    private void SelectTimelineRange(TimelineEntry? start, TimelineEntry end, bool selected, bool preserveExisting)
     {
         if (start is null)
         {
-            end.IsSelectedForCopy = true;
+            end.IsSelectedForCopy = selected;
             return;
         }
 
-        if (!additive)
+        if (!preserveExisting)
         {
             ClearTimelineSelection();
         }
@@ -937,7 +939,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var endIndex = TimelineEntries.IndexOf(end);
         if (startIndex < 0 || endIndex < 0)
         {
-            end.IsSelectedForCopy = true;
+            end.IsSelectedForCopy = selected;
             return;
         }
 
@@ -945,7 +947,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var high = Math.Max(startIndex, endIndex);
         for (var i = low; i <= high; i++)
         {
-            TimelineEntries[i].IsSelectedForCopy = true;
+            TimelineEntries[i].IsSelectedForCopy = selected;
         }
     }
 
@@ -1577,8 +1579,15 @@ ordered: Multiplayer smoke test
             builder.Append('[')
                 .Append(entry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff"))
                 .Append("] [")
-                .Append(entry.DisplaySource)
-                .Append("] [")
+                .Append(entry.DisplaySourceTag);
+
+            if (!entry.IsMarker)
+            {
+                builder.Append("] [")
+                    .Append(entry.DisplayFileTag);
+            }
+
+            builder.Append("] [")
                 .Append(entry.Severity)
                 .Append(']')
                 .Append(' ')

@@ -200,6 +200,21 @@
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                 <TextBlock Text="Auto-scroll" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <ComboBox Width="150" Foreground="#101820" Background="#FFFFFF" ItemsSource="{Binding AutoScrollOptions}" SelectedItem="{Binding AutoScrollMode, UpdateSourceTrigger=PropertyChanged}">
+                                    <ComboBox.ItemContainerStyle>
+                                        <Style TargetType="ComboBoxItem">
+                                            <Setter Property="Foreground" Value="#101820" />
+                                            <Setter Property="Background" Value="#FFFFFF" />
+                                            <Setter Property="Padding" Value="6,4" />
+                                            <Style.Triggers>
+                                                <Trigger Property="IsHighlighted" Value="True">
+                                                    <Setter Property="Background" Value="#DCEAF5" />
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter Property="Background" Value="#BFDDF4" />
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ComboBox.ItemContainerStyle>
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding}" Foreground="#101820" />
@@ -258,27 +273,47 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="28" />
+                                        <ColumnDefinition Width="52" />
                                         <ColumnDefinition Width="112" />
                                         <ColumnDefinition Width="88" />
                                         <ColumnDefinition Width="76" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="170" />
                                     </Grid.ColumnDefinitions>
-                                    <CheckBox IsChecked="{Binding IsSelectedForCopy, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top" />
+                                    <CheckBox IsChecked="{Binding IsSelectedForCopy, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Click="TimelineCheckBox_Click" VerticalAlignment="Top" />
                                     <Border Grid.Column="1" Background="{Binding SourceBrush}" CornerRadius="3" Padding="5,2" Margin="0,0,6,0" VerticalAlignment="Top">
-                                        <TextBlock Text="{Binding DisplaySource}" Foreground="#0B1117" FontWeight="SemiBold" FontSize="11" />
+                                        <TextBlock Text="{Binding DisplaySourceTag}" Foreground="#0B1117" FontWeight="SemiBold" FontSize="11" />
                                     </Border>
-                                    <TextBlock Grid.Column="2" Text="{Binding DisplayTime}" Foreground="{StaticResource TextMuted}" FontFamily="Consolas" VerticalAlignment="Top" />
-                                    <Border Grid.Column="3" Background="{Binding SeverityBrush}" CornerRadius="3" Padding="5,2" Margin="0,0,6,0" VerticalAlignment="Top">
+                                    <Border Grid.Column="2" Background="{Binding SourceBrush}" CornerRadius="3" Padding="5,2" Margin="0,0,6,0" VerticalAlignment="Top" Visibility="{Binding FileTagVisibility}">
+                                        <TextBlock Text="{Binding DisplayFileTag}" Foreground="#0B1117" FontWeight="SemiBold" FontSize="11" />
+                                    </Border>
+                                    <TextBlock Grid.Column="3" Text="{Binding DisplayTime}" Foreground="{StaticResource TextMuted}" FontFamily="Consolas" VerticalAlignment="Top" />
+                                    <Border Grid.Column="4" Background="{Binding SeverityBrush}" CornerRadius="3" Padding="5,2" Margin="0,0,6,0" VerticalAlignment="Top">
                                         <TextBlock Text="{Binding Severity}" Foreground="#0B1117" FontWeight="SemiBold" FontSize="11" HorizontalAlignment="Center" />
                                     </Border>
-                                    <Expander Grid.Column="4" IsExpanded="{Binding IsExpanded, UpdateSourceTrigger=PropertyChanged}" Foreground="{StaticResource TextMain}">
-                                        <Expander.Header>
+                                    <Grid Grid.Column="5">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="24" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <ToggleButton Width="18"
+                                                      Height="18"
+                                                      Padding="0"
+                                                      HorizontalContentAlignment="Center"
+                                                      VerticalContentAlignment="Center"
+                                                      IsChecked="{Binding IsExpanded, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                      Visibility="{Binding HasContinuation, Converter={StaticResource BoolToVisibility}}"
+                                                      Foreground="{StaticResource TextMain}"
+                                                      Background="{StaticResource ControlBg}"
+                                                      BorderBrush="{StaticResource BorderSubtle}">
+                                            <TextBlock Text="{Binding ExpandGlyph}" Foreground="{StaticResource TextMain}" FontSize="10" HorizontalAlignment="Center" />
+                                        </ToggleButton>
+                                        <StackPanel Grid.Column="1">
                                             <TextBlock Text="{Binding Message}" FontFamily="Consolas" TextWrapping="NoWrap" />
-                                        </Expander.Header>
-                                        <TextBox Text="{Binding ContinuationText}" Visibility="{Binding HasContinuation, Converter={StaticResource BoolToVisibility}}" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" BorderThickness="0" Background="#0B1117" />
-                                    </Expander>
-                                    <ItemsControl Grid.Column="5" ItemsSource="{Binding FilterBadges}" ItemTemplate="{StaticResource BadgeTemplate}" VerticalAlignment="Top">
+                                            <TextBox Text="{Binding ContinuationText}" Visibility="{Binding ContinuationVisibility}" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" BorderThickness="0" Background="#0B1117" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <ItemsControl Grid.Column="6" ItemsSource="{Binding FilterBadges}" ItemTemplate="{StaticResource BadgeTemplate}" VerticalAlignment="Top">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
                                                 <WrapPanel />
