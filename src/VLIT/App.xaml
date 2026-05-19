@@ -34,6 +34,13 @@
             <Setter Property="MinHeight" Value="26" />
         </Style>
 
+        <Style TargetType="ToolTip">
+            <Setter Property="Foreground" Value="{StaticResource TextMain}" />
+            <Setter Property="Background" Value="{StaticResource ControlBg}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderSubtle}" />
+            <Setter Property="Padding" Value="6,4" />
+        </Style>
+
         <Style TargetType="CheckBox">
             <Setter Property="Foreground" Value="{StaticResource TextMain}" />
             <Setter Property="VerticalContentAlignment" Value="Center" />

@@ -123,11 +123,13 @@
             <DockPanel LastChildFill="True">
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
                     <Button Content="Refresh" Click="Refresh_Click" ToolTip="Rescan directories and reload included logs" />
+                    <Button Content="Sources" Margin="6,0,0,0" Click="ToggleSources_Click" ToolTip="Show or hide sources and log files" />
                     <Button Content="Add Local VRChat" Margin="6,0,0,0" Click="AddLocalSource_Click" ToolTip="Add the standard local VRChat LocalLow log directory if it exists" />
                     <Button Content="Add Source" Margin="6,0,0,0" Click="AddSource_Click" ToolTip="Add a log source directory" />
                     <Button Content="Copy Selected" Margin="6,0,0,0" Click="CopySelected_Click" ToolTip="Copy checked timeline entries" />
                     <Button Content="Hide Selected" Margin="6,0,0,0" Click="HideSelected_Click" ToolTip="Hide checked timeline entries" />
                     <Button Content="Add Marker" Margin="6,0,0,0" Click="AddMarker_Click" ToolTip="Insert a marker after the selected or newest line" />
+                    <Button Content="Clear Reviewed" Margin="6,0,0,0" Click="ClearReviewed_Click" IsEnabled="{Binding HasReviewedMarker}" ToolTip="Clear the reviewed up to here marker" />
                     <Button Content="Checklist" Margin="6,0,0,0" Click="ToggleChecklist_Click" ToolTip="Show or hide checklist panel" />
                 </StackPanel>
                 <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" HorizontalAlignment="Right" />
@@ -136,13 +138,14 @@
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="430" MinWidth="330" />
-                <ColumnDefinition Width="5" />
+                <ColumnDefinition x:Name="SourcesColumn" Width="430" MinWidth="330" />
+                <ColumnDefinition x:Name="SourcesSplitterColumn" Width="5" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="ChecklistSplitterColumn" Width="0" />
                 <ColumnDefinition x:Name="ChecklistColumn" Width="0" MinWidth="0" />
             </Grid.ColumnDefinitions>
 
-            <Grid Grid.Column="0" Background="{StaticResource PanelBg}">
+            <Grid Grid.Column="0" x:Name="SourcesPanel" Background="{StaticResource PanelBg}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="210" />
                     <RowDefinition Height="150" />
@@ -176,7 +179,7 @@
                 </GroupBox>
             </Grid>
 
-            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderSubtle}" />
+            <GridSplitter Grid.Column="1" x:Name="SourcesSplitter" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderSubtle}" />
 
             <Grid Grid.Column="2" Background="{StaticResource AppBg}">
                 <Grid.RowDefinitions>
@@ -186,8 +189,8 @@
 
                 <Border Grid.Row="0" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1" Padding="8">
                     <StackPanel>
-                        <DockPanel>
-                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                        <WrapPanel>
+                            <WrapPanel Margin="0,0,10,4">
                                 <TextBlock Text="Search" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <TextBox x:Name="SearchBox" Width="300" KeyDown="SearchBox_KeyDown" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" ToolTip="Search text" />
                                 <CheckBox Content="Regex" IsChecked="{Binding SearchUseRegex, UpdateSourceTrigger=PropertyChanged}" Margin="6,0,0,0" ToolTip="Treat search as a regular expression" />
@@ -196,8 +199,8 @@
                                 <Button Content="Next" Click="SearchNext_Click" Margin="4,0,0,0" />
                                 <Button Content="Last" Click="SearchLast_Click" Margin="4,0,0,0" />
                                 <Button Content="Add Filter" Click="SearchToFilter_Click" Margin="6,0,0,0" ToolTip="Create a filter from the current search" />
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            </WrapPanel>
+                            <WrapPanel Margin="0,0,0,4">
                                 <TextBlock Text="Auto-scroll" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <ComboBox Width="150" Foreground="#101820" Background="#FFFFFF" ItemsSource="{Binding AutoScrollOptions}" SelectedItem="{Binding AutoScrollMode, UpdateSourceTrigger=PropertyChanged}">
                                     <ComboBox.ItemContainerStyle>
@@ -221,8 +224,8 @@
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
-                            </StackPanel>
-                        </DockPanel>
+                            </WrapPanel>
+                        </WrapPanel>
 
                         <WrapPanel Margin="0,6,0,0">
                             <ItemsControl ItemsSource="{Binding Filters}" ItemTemplate="{StaticResource FilterTemplate}">
@@ -330,7 +333,9 @@
                 </ListBox>
             </Grid>
 
-            <Border Grid.Column="3" x:Name="ChecklistPanel" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1,0,0,0" Padding="8" Visibility="Collapsed">
+            <GridSplitter Grid.Column="3" x:Name="ChecklistSplitter" Width="5" HorizontalAlignment="Stretch" Background="{StaticResource BorderSubtle}" Visibility="Collapsed" />
+
+            <Border Grid.Column="4" x:Name="ChecklistPanel" Background="{StaticResource PanelBg}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1,0,0,0" Padding="8" Visibility="Collapsed">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />

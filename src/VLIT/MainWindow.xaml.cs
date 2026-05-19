@@ -53,6 +53,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _dragSelectionIsAdditive;
     private TimelineEntry? _lastSelectionAnchor;
     private bool _lastSelectionValue = true;
+    private GridLength _savedSourcesWidth = new(430);
+    private GridLength _savedChecklistWidth = new(370);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -62,6 +64,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public ObservableCollection<TimelineEntry> TimelineEntries { get; } = [];
     public ObservableCollection<ChecklistNode> ChecklistItems { get; private set; } = [];
     public IReadOnlyList<string> AutoScrollOptions { get; } = ["Off", "Always On", "Follow If At Bottom"];
+
+    public bool HasReviewedMarker => !string.IsNullOrWhiteSpace(_reviewedLineKey);
 
     public string StatusText
     {
@@ -313,6 +317,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _reviewedLineKey = _settings.ReviewedLineKey;
+        OnPropertyChanged(nameof(HasReviewedMarker));
         _showUnfilteredLines = _settings.ShowUnfilteredLines;
         _showHiddenLines = _settings.ShowHiddenLines;
         _showMarkers = _settings.ShowMarkers;
@@ -746,9 +751,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _reviewedLineKey = entry.LineKey;
+        OnPropertyChanged(nameof(HasReviewedMarker));
         ApplyTimelineFilters();
         SaveSettings();
         StatusText = $"Reviewed marker moved to {entry.DisplayTime}.";
+    }
+
+    private void ClearReviewed_Click(object sender, RoutedEventArgs e)
+    {
+        ClearReviewedMarker();
+    }
+
+    private void ClearReviewedMarker()
+    {
+        if (string.IsNullOrWhiteSpace(_reviewedLineKey))
+        {
+            return;
+        }
+
+        _reviewedLineKey = string.Empty;
+        OnPropertyChanged(nameof(HasReviewedMarker));
+        ApplyTimelineFilters();
+        SaveSettings();
+        StatusText = "Reviewed marker cleared.";
     }
 
     private void RemoveMarkers(IReadOnlyCollection<TimelineEntry> entries)
@@ -916,6 +941,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         menu.Items.Add(marker);
         menu.Items.Add(reviewed);
 
+        if (HasReviewedMarker)
+        {
+            var clearReviewed = new MenuItem { Header = "Clear reviewed marker" };
+            clearReviewed.Click += (_, _) => ClearReviewedMarker();
+            menu.Items.Add(clearReviewed);
+        }
+
         if (contextEntries.Any(e => e.IsMarker))
         {
             var removeMarker = new MenuItem { Header = "Remove Marker(s)" };
@@ -999,11 +1031,54 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             FindAncestor<TextBoxBase>(focused) is not null;
     }
 
+    private void ToggleSources_Click(object sender, RoutedEventArgs e)
+    {
+        var isOpen = SourcesPanel.Visibility == Visibility.Visible;
+        if (isOpen)
+        {
+            if (SourcesColumn.Width.Value > 0)
+            {
+                _savedSourcesWidth = SourcesColumn.Width;
+            }
+
+            SourcesPanel.Visibility = Visibility.Collapsed;
+            SourcesSplitter.Visibility = Visibility.Collapsed;
+            SourcesColumn.MinWidth = 0;
+            SourcesSplitterColumn.Width = new GridLength(0);
+            SourcesColumn.Width = new GridLength(0);
+        }
+        else
+        {
+            SourcesPanel.Visibility = Visibility.Visible;
+            SourcesSplitter.Visibility = Visibility.Visible;
+            SourcesColumn.MinWidth = 330;
+            SourcesSplitterColumn.Width = new GridLength(5);
+            SourcesColumn.Width = _savedSourcesWidth.Value > 0 ? _savedSourcesWidth : new GridLength(430);
+        }
+    }
+
     private void ToggleChecklist_Click(object sender, RoutedEventArgs e)
     {
         var isOpen = ChecklistPanel.Visibility == Visibility.Visible;
-        ChecklistPanel.Visibility = isOpen ? Visibility.Collapsed : Visibility.Visible;
-        ChecklistColumn.Width = isOpen ? new GridLength(0) : new GridLength(370);
+        if (isOpen)
+        {
+            if (ChecklistColumn.Width.Value > 0)
+            {
+                _savedChecklistWidth = ChecklistColumn.Width;
+            }
+
+            ChecklistPanel.Visibility = Visibility.Collapsed;
+            ChecklistSplitter.Visibility = Visibility.Collapsed;
+            ChecklistSplitterColumn.Width = new GridLength(0);
+            ChecklistColumn.Width = new GridLength(0);
+        }
+        else
+        {
+            ChecklistPanel.Visibility = Visibility.Visible;
+            ChecklistSplitter.Visibility = Visibility.Visible;
+            ChecklistSplitterColumn.Width = new GridLength(5);
+            ChecklistColumn.Width = _savedChecklistWidth.Value > 0 ? _savedChecklistWidth : new GridLength(370);
+        }
     }
 
     private void ParseChecklist_Click(object sender, RoutedEventArgs e)
