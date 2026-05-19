@@ -94,21 +94,35 @@
 
         <DataTemplate x:Key="ChecklistTemplate">
             <Border Margin="{Binding IndentMargin}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1" Padding="2">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="22" />
-                        <ColumnDefinition Width="52" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="76" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Grid.ColumnSpan="4" Text="{Binding Text}" Visibility="{Binding CommentVisibility}" Foreground="{Binding TextBrush}" FontStyle="Italic" VerticalAlignment="Center" />
-                    <CheckBox IsChecked="{Binding IsComplete, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsManualEnabled}" Visibility="{Binding NodeVisibility}" Tag="{Binding}" Checked="ChecklistManual_Checked" />
-                    <Border Grid.Column="1" Background="{Binding StatusBrush}" Visibility="{Binding NodeVisibility}" CornerRadius="3" Padding="3,1" Margin="2,0,4,0">
-                        <TextBlock Text="{Binding TypeLabel}" FontSize="10" Foreground="#0B1117" FontWeight="Bold" HorizontalAlignment="Center" />
-                    </Border>
-                    <TextBlock Grid.Column="2" Text="{Binding Text}" Visibility="{Binding NodeVisibility}" Foreground="{Binding TextBrush}" VerticalAlignment="Center" ToolTip="{Binding Pattern}" />
-                    <TextBlock Grid.Column="3" Text="{Binding StatusText}" Visibility="{Binding NodeVisibility}" Foreground="{StaticResource TextMuted}" FontSize="11" VerticalAlignment="Center" TextAlignment="Right" />
-                </Grid>
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="22" />
+                            <ColumnDefinition Width="52" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="76" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Grid.ColumnSpan="4" Text="{Binding Text}" Visibility="{Binding CommentVisibility}" Foreground="{Binding TextBrush}" FontStyle="Italic" VerticalAlignment="Center" />
+                        <CheckBox IsChecked="{Binding IsComplete, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsManualEnabled}" Visibility="{Binding NodeVisibility}" Tag="{Binding}" Checked="ChecklistManual_Checked" />
+                        <Border Grid.Column="1" Background="{Binding StatusBrush}" Visibility="{Binding NodeVisibility}" CornerRadius="3" Padding="3,1" Margin="2,0,4,0">
+                            <TextBlock Text="{Binding TypeLabel}" FontSize="10" Foreground="#0B1117" FontWeight="Bold" HorizontalAlignment="Center" />
+                        </Border>
+                        <TextBlock Grid.Column="2" Text="{Binding Text}" Visibility="{Binding NodeVisibility}" Foreground="{Binding TextBrush}" VerticalAlignment="Center" ToolTip="{Binding Pattern}" />
+                        <TextBlock Grid.Column="3" Text="{Binding StatusText}" Visibility="{Binding NodeVisibility}" Foreground="{StaticResource TextMuted}" FontSize="11" VerticalAlignment="Center" TextAlignment="Right" />
+                    </Grid>
+                    <Grid Margin="{Binding ImplicitMarkerMargin}" Visibility="{Binding ImplicitMarkerVisibility}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="18" />
+                            <ColumnDefinition Width="52" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="▶" Foreground="{StaticResource TextMuted}" FontSize="10" VerticalAlignment="Center" />
+                        <Border Grid.Column="1" Background="#F4D35E" CornerRadius="3" Padding="3,1" Margin="2,0,4,0">
+                            <TextBlock Text="MARK" FontSize="10" Foreground="#0B1117" FontWeight="Bold" HorizontalAlignment="Center" />
+                        </Border>
+                        <TextBlock Grid.Column="2" Text="{Binding InsertMarker}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" />
+                    </Grid>
+                </StackPanel>
             </Border>
         </DataTemplate>
     </Window.Resources>
@@ -131,6 +145,10 @@
                     <Button Content="Hide Selected" Margin="6,0,0,0" Click="HideSelected_Click" ToolTip="Hide checked timeline entries" />
                     <Button Content="Add Marker" Margin="6,0,0,0" Click="AddMarker_Click" ToolTip="Insert a marker after the selected or newest line" />
                     <Button Content="Clear Reviewed" Margin="6,0,0,0" Click="ClearReviewed_Click" IsEnabled="{Binding HasReviewedMarker}" ToolTip="Clear the reviewed up to here marker" />
+                    <Button Content="To Start" Margin="6,0,0,0" Click="ScrollToStart_Click" ToolTip="Scroll to the first visible timeline row" />
+                    <Button Content="To Reviewed" Margin="6,0,0,0" Click="ScrollToReviewed_Click" IsEnabled="{Binding HasReviewedMarker}" ToolTip="Scroll to the reviewed marker row" />
+                    <Button Content="To Selected" Margin="6,0,0,0" Click="ScrollToSelected_Click" ToolTip="Scroll to the last selected timeline row" />
+                    <Button Content="To End" Margin="6,0,0,0" Click="ScrollToEnd_Click" ToolTip="Scroll to the last visible timeline row" />
                     <Button Content="Checklist" Margin="6,0,0,0" Click="ToggleChecklist_Click" ToolTip="Show or hide checklist panel" />
                 </StackPanel>
                 <TextBlock Text="{Binding StatusText}" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" HorizontalAlignment="Right" />
@@ -342,6 +360,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="145" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <DockPanel>
@@ -357,14 +376,16 @@
                              Text="{Binding ChecklistText, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="Paste checklist syntax here" />
                     <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,4,0,8">
-                        <Button Content="{Binding ChecklistPauseButtonText}" Click="ToggleChecklistPause_Click" Background="{Binding ChecklistPauseButtonBrush}" Foreground="{Binding ChecklistPauseButtonForeground}" />
-                        <Button Content="Step" Click="ChecklistStep_Click" IsEnabled="{Binding IsChecklistStepEnabled}" Margin="6,0,0,0" />
                         <Button Content="Parse" Click="ParseChecklist_Click" />
                         <Button Content="Paste" Click="PasteChecklist_Click" Margin="6,0,0,0" />
                         <Button Content="Sample" Click="SampleChecklist_Click" Margin="6,0,0,0" />
                         <Button Content="Clear" Click="ClearChecklist_Click" Margin="6,0,0,0" />
                     </StackPanel>
-                    <ListBox Grid.Row="3"
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,8">
+                        <Button Content="{Binding ChecklistPauseButtonText}" Click="ToggleChecklistPause_Click" Background="{Binding ChecklistPauseButtonBrush}" Foreground="{Binding ChecklistPauseButtonForeground}" />
+                        <Button Content="Step" Click="ChecklistStep_Click" IsEnabled="{Binding IsChecklistStepEnabled}" Margin="6,0,0,0" />
+                    </StackPanel>
+                    <ListBox Grid.Row="4"
                              x:Name="ChecklistList"
                              ItemsSource="{Binding ChecklistItems}"
                              ItemTemplate="{StaticResource ChecklistTemplate}"

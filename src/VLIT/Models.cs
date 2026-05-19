@@ -633,6 +633,15 @@ public sealed class ChecklistNode : ObservableObject
     public Visibility NodeVisibility => IsComment ? Visibility.Collapsed : Visibility.Visible;
 
     [JsonIgnore]
+    public bool HasImplicitMarker => !IsComment && Type != ChecklistNodeType.Marker && !string.IsNullOrWhiteSpace(InsertMarker);
+
+    [JsonIgnore]
+    public Visibility ImplicitMarkerVisibility => HasImplicitMarker ? Visibility.Visible : Visibility.Collapsed;
+
+    [JsonIgnore]
+    public Thickness ImplicitMarkerMargin => new((Indent + 1) * 16, 2, 2, 2);
+
+    [JsonIgnore]
     public string TypeLabel => Type switch
     {
         ChecklistNodeType.OrderedGroup or ChecklistNodeType.UnorderedGroup => string.IsNullOrWhiteSpace(GroupSpecText) ? "GROUP" : GroupSpecText,

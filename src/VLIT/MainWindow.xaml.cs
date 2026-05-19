@@ -787,6 +787,40 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         StatusText = "Reviewed marker cleared.";
     }
 
+    private void ScrollToStart_Click(object sender, RoutedEventArgs e)
+    {
+        ScrollTimelineTo(TimelineEntries.FirstOrDefault());
+    }
+
+    private void ScrollToReviewed_Click(object sender, RoutedEventArgs e)
+    {
+        ScrollTimelineTo(TimelineEntries.FirstOrDefault(e => e.LineKey.Equals(_reviewedLineKey, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private void ScrollToSelected_Click(object sender, RoutedEventArgs e)
+    {
+        ScrollTimelineTo(_lastSelectionAnchor
+            ?? TimelineEntries.LastOrDefault(entry => entry.IsSelectedForCopy)
+            ?? (TimelineList.SelectedItem as TimelineEntry));
+    }
+
+    private void ScrollToEnd_Click(object sender, RoutedEventArgs e)
+    {
+        ScrollTimelineTo(TimelineEntries.LastOrDefault());
+    }
+
+    private void ScrollTimelineTo(TimelineEntry? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        TimelineList.SelectedItem = entry;
+        TimelineList.ScrollIntoView(entry);
+        TimelineList.Focus();
+    }
+
     private void RemoveMarkers(IReadOnlyCollection<TimelineEntry> entries)
     {
         var markerIds = entries
@@ -1226,7 +1260,12 @@ ordered: Multiplayer smoke test
 
         if (!skipped && !string.IsNullOrWhiteSpace(node.InsertMarker))
         {
-            InsertMarkerInternal(node.InsertMarker, GetMarkerAnchor(), $"check:{node.Id}", applyNow: true);
+            var marker = InsertChecklistMarker(node.InsertMarker, $"check:{node.Id}", applyNow: true);
+            if (marker is not null)
+            {
+                node.MatchLineKey = MarkerLineKey(marker);
+                node.MatchSortTicks = marker.SortTicks;
+            }
         }
 
         SaveSettings();
@@ -1656,6 +1695,7 @@ ordered: Multiplayer smoke test
             var startCursor = GetReviewedSortTicks();
             var reviewedBeforeKey = _reviewedLineKey;
             var markerAdded = false;
+            var reviewedAdvancedByMarker = false;
             var consumedStep = false;
             TimelineEntry? lastMatchedEntry = null;
             var cursor = startCursor;
@@ -1666,12 +1706,18 @@ ordered: Multiplayer smoke test
                     break;
                 }
 
-                TryEvaluateChecklistNode(root, logEntries, ref cursor, ref markerAdded, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, startCursor);
+                TryEvaluateChecklistNode(root, logEntries, ref cursor, ref markerAdded, ref reviewedAdvancedByMarker, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, startCursor);
             }
 
-            if (lastMatchedEntry is not null)
+            if (lastMatchedEntry is not null && !reviewedAdvancedByMarker)
             {
                 _reviewedLineKey = lastMatchedEntry.LineKey;
+                OnPropertyChanged(nameof(HasReviewedMarker));
+                ApplyTimelineFilters();
+                SaveSettings();
+            }
+            else if (reviewedAdvancedByMarker)
+            {
                 OnPropertyChanged(nameof(HasReviewedMarker));
                 ApplyTimelineFilters();
                 SaveSettings();
@@ -1698,6 +1744,7 @@ ordered: Multiplayer smoke test
         IReadOnlyList<TimelineEntry> entries,
         ref long cursor,
         ref bool markerAdded,
+        ref bool reviewedAdvancedByMarker,
         ref TimelineEntry? lastMatchedEntry,
         bool singleStep,
         ref bool consumedStep,
@@ -1756,7 +1803,13 @@ ordered: Multiplayer smoke test
                 consumedStep = true;
                 if (!string.IsNullOrWhiteSpace(node.InsertMarker))
                 {
-                    markerAdded |= InsertMarkerInternal(node.InsertMarker, match, $"check:{node.Id}", applyNow: false);
+                    if (InsertChecklistMarker(node.InsertMarker, $"check:{node.Id}", applyNow: false) is { } marker)
+                    {
+                        markerAdded = true;
+                        reviewedAdvancedByMarker = true;
+                        node.MatchLineKey = MarkerLineKey(marker);
+                        node.MatchSortTicks = marker.SortTicks;
+                    }
                 }
 
                 return true;
@@ -1775,7 +1828,7 @@ ordered: Multiplayer smoke test
 
             case ChecklistNodeType.OrderedGroup:
             case ChecklistNodeType.UnorderedGroup:
-                return TryEvaluateChecklistGroup(node, entries, ref cursor, ref markerAdded, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, reviewedBeforeSortTicks);
+                return TryEvaluateChecklistGroup(node, entries, ref cursor, ref markerAdded, ref reviewedAdvancedByMarker, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, reviewedBeforeSortTicks);
 
             default:
                 return false;
@@ -1787,6 +1840,7 @@ ordered: Multiplayer smoke test
         IReadOnlyList<TimelineEntry> entries,
         ref long cursor,
         ref bool markerAdded,
+        ref bool reviewedAdvancedByMarker,
         ref TimelineEntry? lastMatchedEntry,
         bool singleStep,
         ref bool consumedStep,
@@ -1814,7 +1868,7 @@ ordered: Multiplayer smoke test
                     break;
                 }
 
-                if (!TryEvaluateChecklistNode(child, entries, ref cursor, ref markerAdded, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, reviewedBeforeSortTicks))
+                if (!TryEvaluateChecklistNode(child, entries, ref cursor, ref markerAdded, ref reviewedAdvancedByMarker, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, reviewedBeforeSortTicks))
                 {
                     break;
                 }
@@ -1834,7 +1888,7 @@ ordered: Multiplayer smoke test
                 foreach (var child in children.Where(c => !c.IsComplete).ToList())
                 {
                     var childCursor = cursor;
-                    if (TryEvaluateChecklistNode(child, entries, ref childCursor, ref markerAdded, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, reviewedBeforeSortTicks))
+                    if (TryEvaluateChecklistNode(child, entries, ref childCursor, ref markerAdded, ref reviewedAdvancedByMarker, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, reviewedBeforeSortTicks))
                     {
                         cursor = Math.Max(cursor, childCursor);
                         madeProgress = true;
@@ -1870,7 +1924,13 @@ ordered: Multiplayer smoke test
 
             if (!string.IsNullOrWhiteSpace(node.InsertMarker))
             {
-                markerAdded |= InsertMarkerInternal(node.InsertMarker, lastMatchedEntry, $"check:{node.Id}", applyNow: false);
+                if (InsertChecklistMarker(node.InsertMarker, $"check:{node.Id}", applyNow: false) is { } marker)
+                {
+                    markerAdded = true;
+                    reviewedAdvancedByMarker = true;
+                    node.MatchLineKey = MarkerLineKey(marker);
+                    node.MatchSortTicks = marker.SortTicks;
+                }
             }
         }
 
@@ -1884,31 +1944,97 @@ ordered: Multiplayer smoke test
             return 0L;
         }
 
-        return TimelineEntries.FirstOrDefault(e => e.LineKey.Equals(_reviewedLineKey, StringComparison.OrdinalIgnoreCase))?.SortTicks ?? 0L;
+        return GetReviewedEntry()?.SortTicks ?? 0L;
     }
 
-    private bool InsertMarkerInternal(string text, TimelineEntry? anchor, string markerKey, bool applyNow)
+    private TimelineEntry? GetReviewedEntry()
+    {
+        if (string.IsNullOrWhiteSpace(_reviewedLineKey))
+        {
+            return null;
+        }
+
+        var visible = TimelineEntries.FirstOrDefault(e => e.LineKey.Equals(_reviewedLineKey, StringComparison.OrdinalIgnoreCase));
+        if (visible is not null)
+        {
+            return visible;
+        }
+
+        var parsed = _entriesByFile.Values
+            .SelectMany(entries => entries)
+            .FirstOrDefault(e => e.LineKey.Equals(_reviewedLineKey, StringComparison.OrdinalIgnoreCase));
+        if (parsed is not null)
+        {
+            return parsed;
+        }
+
+        if (_reviewedLineKey.StartsWith("marker:", StringComparison.OrdinalIgnoreCase))
+        {
+            var markerId = _reviewedLineKey["marker:".Length..];
+            var marker = _markers.FirstOrDefault(m => m.Id.Equals(markerId, StringComparison.OrdinalIgnoreCase));
+            if (marker is not null)
+            {
+                return new TimelineEntry
+                {
+                    LineKey = MarkerLineKey(marker),
+                    Timestamp = marker.Timestamp,
+                    SortTicks = marker.SortTicks,
+                    Severity = "Marker",
+                    Message = marker.Text,
+                    SourceColor = "#F4D35E",
+                    FileColor = "#F4D35E",
+                    IsMarker = true
+                };
+            }
+        }
+
+        return null;
+    }
+
+    private MarkerItem? InsertChecklistMarker(string text, string markerKey, bool applyNow)
+    {
+        var marker = InsertMarkerInternal(text, GetReviewedEntry() ?? GetMarkerAnchor(), markerKey, applyNow: false);
+        if (marker is null)
+        {
+            return null;
+        }
+
+        _reviewedLineKey = MarkerLineKey(marker);
+        OnPropertyChanged(nameof(HasReviewedMarker));
+        if (applyNow)
+        {
+            ApplyTimelineFilters();
+            SaveSettings();
+        }
+
+        return marker;
+    }
+
+    private static string MarkerLineKey(MarkerItem marker) => $"marker:{marker.Id}";
+
+    private MarkerItem? InsertMarkerInternal(string text, TimelineEntry? anchor, string markerKey, bool applyNow)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
-            return false;
+            return null;
         }
 
         if (markerKey.StartsWith("check:", StringComparison.OrdinalIgnoreCase) &&
-            _markers.Any(m => m.AnchorLineKey.Equals(markerKey, StringComparison.OrdinalIgnoreCase)))
+            _markers.FirstOrDefault(m => m.AnchorLineKey.Equals(markerKey, StringComparison.OrdinalIgnoreCase)) is { } existing)
         {
-            return false;
+            return existing;
         }
 
         var timestamp = anchor?.Timestamp ?? DateTime.Now;
         var sortTicks = GetMarkerSortTicksAfter(anchor, timestamp);
-        _markers.Add(new MarkerItem
+        var marker = new MarkerItem
         {
             Text = text.Trim(),
             Timestamp = new DateTime(Math.Clamp(sortTicks, DateTime.MinValue.Ticks, DateTime.MaxValue.Ticks)),
             SortTicks = sortTicks,
             AnchorLineKey = markerKey
-        });
+        };
+        _markers.Add(marker);
 
         if (applyNow)
         {
@@ -1916,7 +2042,7 @@ ordered: Multiplayer smoke test
             SaveSettings();
         }
 
-        return true;
+        return marker;
     }
 
     private long GetMarkerSortTicksAfter(TimelineEntry? anchor, DateTime timestamp)
