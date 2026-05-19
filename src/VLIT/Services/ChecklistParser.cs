@@ -24,21 +24,36 @@ public static class ChecklistParser
                 continue;
             }
 
-            var commentIndex = rawLine.IndexOf('#');
-            var uncommented = commentIndex >= 0 ? rawLine[..commentIndex] : rawLine;
-            if (string.IsNullOrWhiteSpace(uncommented))
+            var indent = CountIndent(rawLine);
+            var trimmedRaw = rawLine.Trim();
+            ChecklistNode? node;
+            if (trimmedRaw.StartsWith("#", StringComparison.Ordinal))
             {
-                continue;
+                node = new ChecklistNode
+                {
+                    Type = ChecklistNodeType.Comment,
+                    Text = trimmedRaw[1..].TrimStart(),
+                    Indent = indent
+                };
+            }
+            else
+            {
+                var commentIndex = rawLine.IndexOf('#');
+                var uncommented = commentIndex >= 0 ? rawLine[..commentIndex] : rawLine;
+                if (string.IsNullOrWhiteSpace(uncommented))
+                {
+                    continue;
+                }
+
+                var line = uncommented.Trim();
+                if (line.StartsWith("- ", StringComparison.Ordinal))
+                {
+                    line = line[2..].TrimStart();
+                }
+
+                node = ParseNode(line, indent);
             }
 
-            var indent = CountIndent(uncommented);
-            var line = uncommented.Trim();
-            if (line.StartsWith("- ", StringComparison.Ordinal))
-            {
-                line = line[2..].TrimStart();
-            }
-
-            var node = ParseNode(line, indent);
             if (node is null)
             {
                 continue;
@@ -85,30 +100,31 @@ public static class ChecklistParser
         var body = split[1].Trim();
         var marker = ExtractMarker(ref body);
 
+        if (TryParseGroupSpec(keyword, out var isOrdered, out var requiredMin, out var requiredMax, out var specText))
+        {
+            return new ChecklistNode
+            {
+                Type = isOrdered ? ChecklistNodeType.OrderedGroup : ChecklistNodeType.UnorderedGroup,
+                Text = EmptyAs(body, specText),
+                Indent = indent,
+                InsertMarker = marker,
+                IsOrdered = isOrdered,
+                RequiredMin = requiredMin,
+                RequiredMax = requiredMax,
+                GroupSpecText = specText
+            };
+        }
+
         return keyword switch
         {
-            "ordered" or "sequence" => new ChecklistNode
-            {
-                Type = ChecklistNodeType.OrderedGroup,
-                Text = EmptyAs(body, "Ordered group"),
-                Indent = indent,
-                InsertMarker = marker
-            },
-            "unordered" or "any" or "group" => new ChecklistNode
-            {
-                Type = ChecklistNodeType.UnorderedGroup,
-                Text = EmptyAs(body, "Unordered group"),
-                Indent = indent,
-                InsertMarker = marker
-            },
-            "action" or "step" => new ChecklistNode
+            "action" => new ChecklistNode
             {
                 Type = ChecklistNodeType.Action,
                 Text = EmptyAs(body, "Action"),
                 Indent = indent,
                 InsertMarker = marker
             },
-            "expect" or "log" or "match" => new ChecklistNode
+            "expect" => new ChecklistNode
             {
                 Type = ChecklistNodeType.Expect,
                 Text = EmptyAs(ReadableRegexLabel(body), "Expected log"),
@@ -116,7 +132,7 @@ public static class ChecklistParser
                 Indent = indent,
                 InsertMarker = marker
             },
-            "marker" or "mark" => new ChecklistNode
+            "marker" => new ChecklistNode
             {
                 Type = ChecklistNodeType.Marker,
                 Text = EmptyAs(body, "Marker"),
@@ -132,6 +148,113 @@ public static class ChecklistParser
                 InsertMarker = marker
             }
         };
+    }
+
+    private static bool TryParseGroupSpec(string keyword, out bool isOrdered, out int requiredMin, out int? requiredMax, out string specText)
+    {
+        isOrdered = false;
+        requiredMin = -1;
+        requiredMax = -1;
+        specText = "ALL";
+
+        var tokens = keyword.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length == 0)
+        {
+            return false;
+        }
+
+        var sawNumber = false;
+        var sawOrdering = false;
+        foreach (var token in tokens)
+        {
+            if (token.Equals("ordered", StringComparison.OrdinalIgnoreCase))
+            {
+                isOrdered = true;
+                sawOrdering = true;
+                continue;
+            }
+
+            if (token.Equals("unordered", StringComparison.OrdinalIgnoreCase))
+            {
+                isOrdered = false;
+                sawOrdering = true;
+                continue;
+            }
+
+            if (token.Equals("all", StringComparison.OrdinalIgnoreCase))
+            {
+                requiredMin = -1;
+                requiredMax = -1;
+                sawNumber = true;
+                continue;
+            }
+
+            if (token.Equals("any", StringComparison.OrdinalIgnoreCase))
+            {
+                requiredMin = 1;
+                requiredMax = null;
+                sawNumber = true;
+                continue;
+            }
+
+            if (token.StartsWith("any(", StringComparison.OrdinalIgnoreCase) && token.EndsWith(')'))
+            {
+                ParseAnyCount(token[4..^1], out requiredMin, out requiredMax);
+                sawNumber = true;
+                continue;
+            }
+
+            return false;
+        }
+
+        if (!sawNumber && !sawOrdering)
+        {
+            return false;
+        }
+
+        var numberText = requiredMin < 0
+            ? "ALL"
+            : requiredMax is null
+                ? requiredMin == 0 ? "ANY*" : "ANY+"
+                : requiredMin == requiredMax ? $"ANY{requiredMin}" : $"ANY{requiredMin}-{requiredMax}";
+        specText = isOrdered ? $"{numberText} ORDER" : numberText;
+        return true;
+    }
+
+    private static void ParseAnyCount(string count, out int requiredMin, out int? requiredMax)
+    {
+        count = string.IsNullOrWhiteSpace(count) ? "+" : count.Trim();
+        switch (count)
+        {
+            case "*":
+                requiredMin = 0;
+                requiredMax = null;
+                return;
+            case "+":
+                requiredMin = 1;
+                requiredMax = null;
+                return;
+        }
+
+        var range = count.Split('-', 2, StringSplitOptions.TrimEntries);
+        if (range.Length == 2 &&
+            int.TryParse(range[0], out var min) &&
+            int.TryParse(range[1], out var max))
+        {
+            requiredMin = Math.Max(0, min);
+            requiredMax = Math.Max(requiredMin, max);
+            return;
+        }
+
+        if (int.TryParse(count, out var exact))
+        {
+            requiredMin = Math.Max(0, exact);
+            requiredMax = requiredMin;
+            return;
+        }
+
+        requiredMin = 1;
+        requiredMax = null;
     }
 
     private static string ExtractMarker(ref string body)

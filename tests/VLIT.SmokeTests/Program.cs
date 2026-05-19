@@ -35,6 +35,23 @@ try
 
     Console.WriteLine("Synthetic parser smoke test passed.");
 
+    var checklist = ChecklistParser.Parse("""
+# visible comment
+all ordered: Startup
+  action: Start client
+  expect: /Boot line/
+any(1-2): Optional warnings
+  expect: Warning
+  marker: Note optional branch
+""");
+    Require(checklist.Any(n => n.Type == ChecklistNodeType.Comment), "Expected comments to be parsed as checklist rows.");
+    var ordered = checklist.First(n => n.Text == "Startup");
+    Require(ordered.IsOrdered && ordered.RequiredMin == -1, "Expected 'all ordered' group spec.");
+    var ranged = checklist.First(n => n.Text == "Optional warnings");
+    Require(!ranged.IsOrdered && ranged.RequiredMin == 1 && ranged.RequiredMax == 2, "Expected 'any(1-2)' group spec.");
+
+    Console.WriteLine("Checklist parser smoke test passed.");
+
     if (args.Length > 0 && Directory.Exists(args[0]))
     {
         var realLogs = Directory.EnumerateFiles(args[0], "output_log_*.txt")

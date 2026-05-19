@@ -101,12 +101,13 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="76" />
                     </Grid.ColumnDefinitions>
-                    <CheckBox IsChecked="{Binding IsComplete, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsManualEnabled}" Tag="{Binding}" Checked="ChecklistManual_Checked" />
-                    <Border Grid.Column="1" Background="{Binding StatusBrush}" CornerRadius="3" Padding="3,1" Margin="2,0,4,0">
+                    <TextBlock Grid.Column="0" Grid.ColumnSpan="4" Text="{Binding Text}" Visibility="{Binding CommentVisibility}" Foreground="{Binding TextBrush}" FontStyle="Italic" VerticalAlignment="Center" />
+                    <CheckBox IsChecked="{Binding IsComplete, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsManualEnabled}" Visibility="{Binding NodeVisibility}" Tag="{Binding}" Checked="ChecklistManual_Checked" />
+                    <Border Grid.Column="1" Background="{Binding StatusBrush}" Visibility="{Binding NodeVisibility}" CornerRadius="3" Padding="3,1" Margin="2,0,4,0">
                         <TextBlock Text="{Binding TypeLabel}" FontSize="10" Foreground="#0B1117" FontWeight="Bold" HorizontalAlignment="Center" />
                     </Border>
-                    <TextBlock Grid.Column="2" Text="{Binding Text}" VerticalAlignment="Center" ToolTip="{Binding Pattern}" />
-                    <TextBlock Grid.Column="3" Text="{Binding StatusText}" Foreground="{StaticResource TextMuted}" FontSize="11" VerticalAlignment="Center" TextAlignment="Right" />
+                    <TextBlock Grid.Column="2" Text="{Binding Text}" Visibility="{Binding NodeVisibility}" Foreground="{Binding TextBrush}" VerticalAlignment="Center" ToolTip="{Binding Pattern}" />
+                    <TextBlock Grid.Column="3" Text="{Binding StatusText}" Visibility="{Binding NodeVisibility}" Foreground="{StaticResource TextMuted}" FontSize="11" VerticalAlignment="Center" TextAlignment="Right" />
                 </Grid>
             </Border>
         </DataTemplate>
@@ -356,16 +357,26 @@
                              Text="{Binding ChecklistText, UpdateSourceTrigger=PropertyChanged}"
                              ToolTip="Paste checklist syntax here" />
                     <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,4,0,8">
+                        <Button Content="{Binding ChecklistPauseButtonText}" Click="ToggleChecklistPause_Click" Background="{Binding ChecklistPauseButtonBrush}" Foreground="{Binding ChecklistPauseButtonForeground}" />
+                        <Button Content="Step" Click="ChecklistStep_Click" IsEnabled="{Binding IsChecklistStepEnabled}" Margin="6,0,0,0" />
                         <Button Content="Parse" Click="ParseChecklist_Click" />
                         <Button Content="Paste" Click="PasteChecklist_Click" Margin="6,0,0,0" />
                         <Button Content="Sample" Click="SampleChecklist_Click" Margin="6,0,0,0" />
                         <Button Content="Clear" Click="ClearChecklist_Click" Margin="6,0,0,0" />
                     </StackPanel>
                     <ListBox Grid.Row="3"
+                             x:Name="ChecklistList"
                              ItemsSource="{Binding ChecklistItems}"
                              ItemTemplate="{StaticResource ChecklistTemplate}"
                              VirtualizingPanel.IsVirtualizing="True"
-                             VirtualizingPanel.VirtualizationMode="Recycling" />
+                             VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                <EventSetter Event="PreviewMouseRightButtonDown" Handler="ChecklistRow_PreviewMouseRightButtonDown" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
                 </Grid>
             </Border>
         </Grid>

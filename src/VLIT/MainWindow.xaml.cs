@@ -29,6 +29,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private bool _isDraggingTimelineSelection;
     private bool _dragSelectionValue;
     private bool _isEvaluatingChecklist;
+    private bool _isChecklistPaused;
     private bool _hasCompletedInitialDiscovery;
     private string _reviewedLineKey = string.Empty;
     private string _statusText = "Ready";
@@ -66,6 +67,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public IReadOnlyList<string> AutoScrollOptions { get; } = ["Off", "Always On", "Follow If At Bottom"];
 
     public bool HasReviewedMarker => !string.IsNullOrWhiteSpace(_reviewedLineKey);
+
+    public string ChecklistPauseButtonText => _isChecklistPaused ? "▶ Unpause" : "⏸ Pause";
+
+    public SolidColorBrush ChecklistPauseButtonBrush => _isChecklistPaused ? Palette.Brush("#F4D35E") : Palette.Brush("#1B2733");
+
+    public SolidColorBrush ChecklistPauseButtonForeground => _isChecklistPaused ? Palette.Brush("#0B1117") : Palette.Brush("#E8EEF4");
+
+    public bool IsChecklistStepEnabled => _isChecklistPaused;
 
     public string StatusText
     {
@@ -752,6 +761,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _reviewedLineKey = entry.LineKey;
         OnPropertyChanged(nameof(HasReviewedMarker));
+        SetChecklistPaused(true);
         ApplyTimelineFilters();
         SaveSettings();
         StatusText = $"Reviewed marker moved to {entry.DisplayTime}.";
@@ -771,6 +781,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _reviewedLineKey = string.Empty;
         OnPropertyChanged(nameof(HasReviewedMarker));
+        SetChecklistPaused(true);
         ApplyTimelineFilters();
         SaveSettings();
         StatusText = "Reviewed marker cleared.";
@@ -1057,6 +1068,43 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
     }
 
+    private void ToggleChecklistPause_Click(object sender, RoutedEventArgs e)
+    {
+        SetChecklistPaused(!_isChecklistPaused);
+        if (!_isChecklistPaused)
+        {
+            EvaluateChecklist();
+        }
+    }
+
+    private void ChecklistStep_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_isChecklistPaused)
+        {
+            return;
+        }
+
+        EvaluateChecklist(singleStep: true);
+    }
+
+    private void SetChecklistPaused(bool value)
+    {
+        if (_isChecklistPaused == value)
+        {
+            return;
+        }
+
+        _isChecklistPaused = value;
+        OnPropertyChanged(nameof(ChecklistPauseButtonText));
+        OnPropertyChanged(nameof(ChecklistPauseButtonBrush));
+        OnPropertyChanged(nameof(ChecklistPauseButtonForeground));
+        OnPropertyChanged(nameof(IsChecklistStepEnabled));
+        if (_isChecklistPaused)
+        {
+            StatusText = "Checklist paused.";
+        }
+    }
+
     private void ToggleChecklist_Click(object sender, RoutedEventArgs e)
     {
         var isOpen = ChecklistPanel.Visibility == Visibility.Visible;
@@ -1109,11 +1157,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void SampleChecklist_Click(object sender, RoutedEventArgs e)
     {
         ChecklistText = """
+# comments are shown in the checklist
 ordered: Multiplayer smoke test
   action: Start host client => marker: Host started
   action: Start second client => marker: Second client started
   expect: Udon
-  unordered: Startup warnings of interest
+  all: Startup warnings of interest
     expect: Warning
     expect: Network
   marker: Finished smoke-test pass
@@ -1130,17 +1179,121 @@ ordered: Multiplayer smoke test
             return;
         }
 
-        node.IsComplete = true;
-        node.StatusText = "Done";
-        node.MatchSortTicks = DateTime.Now.Ticks;
+        MarkChecklistNodeComplete(node, skipped: false);
+    }
 
-        if (!string.IsNullOrWhiteSpace(node.InsertMarker))
+    private void ChecklistRow_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ListBoxItem item || item.DataContext is not ChecklistNode node || node.IsComment)
+        {
+            return;
+        }
+
+        ChecklistList.SelectedItem = node;
+        item.Focus();
+        item.ContextMenu = BuildChecklistContextMenu(node);
+    }
+
+    private ContextMenu BuildChecklistContextMenu(ChecklistNode node)
+    {
+        var menu = new ContextMenu();
+        var complete = new MenuItem { Header = "Mark complete" };
+        complete.Click += (_, _) => MarkChecklistNodeComplete(node, skipped: false);
+        var skip = new MenuItem { Header = "Mark skip" };
+        skip.Click += (_, _) => MarkChecklistNodeComplete(node, skipped: true);
+        menu.Items.Add(complete);
+        menu.Items.Add(skip);
+
+        if (CanRollbackChecklistNode(node))
+        {
+            var rollback = new MenuItem { Header = "Rollback" };
+            rollback.Click += (_, _) => RollbackChecklistNode(node);
+            menu.Items.Add(new Separator());
+            menu.Items.Add(rollback);
+        }
+
+        return menu;
+    }
+
+    private void MarkChecklistNodeComplete(ChecklistNode node, bool skipped)
+    {
+        node.IsComplete = true;
+        node.IsSkipped = skipped;
+        node.StatusText = skipped ? "Skipped" : "Done";
+        node.ReviewedBeforeLineKey = _reviewedLineKey;
+        node.ReviewedBeforeSortTicks = GetReviewedSortTicks();
+        node.MatchSortTicks = GetReviewedSortTicks();
+
+        if (!skipped && !string.IsNullOrWhiteSpace(node.InsertMarker))
         {
             InsertMarkerInternal(node.InsertMarker, GetMarkerAnchor(), $"check:{node.Id}", applyNow: true);
         }
 
-        EvaluateChecklist();
         SaveSettings();
+        if (!_isChecklistPaused)
+        {
+            EvaluateChecklist();
+        }
+    }
+
+    private bool CanRollbackChecklistNode(ChecklistNode node)
+    {
+        if (!(node.IsComplete || DescendantsOf(node).Any(child => child.IsComplete)))
+        {
+            return false;
+        }
+
+        return !AncestorsOf(node).Any(ancestor => ancestor.IsComplete);
+    }
+
+    private void RollbackChecklistNode(ChecklistNode node)
+    {
+        SetChecklistPaused(true);
+        var previousReviewedKey = node.ReviewedBeforeLineKey;
+        foreach (var target in new[] { node }.Concat(DescendantsOf(node)))
+        {
+            target.IsComplete = false;
+            target.IsSkipped = false;
+            target.IsActive = false;
+            target.MatchLineKey = string.Empty;
+            target.MatchSortTicks = 0;
+            target.StatusText = target.Type == ChecklistNodeType.Expect ? "Watching" : "Pending";
+            _markers.RemoveAll(marker => marker.AnchorLineKey.Equals($"check:{target.Id}", StringComparison.OrdinalIgnoreCase));
+        }
+
+        _reviewedLineKey = previousReviewedKey;
+        OnPropertyChanged(nameof(HasReviewedMarker));
+        ApplyTimelineFilters();
+        SaveSettings();
+        StatusText = "Checklist rolled back and paused.";
+    }
+
+    private IEnumerable<ChecklistNode> DescendantsOf(ChecklistNode node)
+    {
+        foreach (var child in node.Children)
+        {
+            yield return child;
+            foreach (var nested in DescendantsOf(child))
+            {
+                yield return nested;
+            }
+        }
+    }
+
+    private IEnumerable<ChecklistNode> AncestorsOf(ChecklistNode node)
+    {
+        var parentId = node.ParentId;
+        while (!string.IsNullOrWhiteSpace(parentId) && parentId != "root")
+        {
+            var parent = ChecklistItems.FirstOrDefault(candidate => candidate.Id == parentId);
+            if (parent is null)
+            {
+                yield break;
+            }
+
+            yield return parent;
+            parentId = parent.ParentId;
+        }
     }
 
     private async Task RefreshAllAsync()
@@ -1469,9 +1622,9 @@ ordered: Multiplayer smoke test
         EvaluateChecklist();
     }
 
-    private void EvaluateChecklist()
+    private void EvaluateChecklist(bool singleStep = false)
     {
-        if (_isEvaluatingChecklist || ChecklistItems.Count == 0)
+        if (_isEvaluatingChecklist || ChecklistItems.Count == 0 || (_isChecklistPaused && !singleStep))
         {
             return;
         }
@@ -1484,7 +1637,12 @@ ordered: Multiplayer smoke test
                 node.IsActive = false;
                 if (!node.IsComplete)
                 {
-                    node.StatusText = node.Type == ChecklistNodeType.Expect ? "Watching" : "Pending";
+                    node.StatusText = node.Type switch
+                    {
+                        ChecklistNodeType.Expect => "Watching",
+                        ChecklistNodeType.Comment => string.Empty,
+                        _ => "Pending"
+                    };
                 }
             }
 
@@ -1495,17 +1653,38 @@ ordered: Multiplayer smoke test
                 .ThenBy(e => e.LineNumber)
                 .ToList();
 
+            var startCursor = GetReviewedSortTicks();
+            var reviewedBeforeKey = _reviewedLineKey;
             var markerAdded = false;
+            var consumedStep = false;
+            TimelineEntry? lastMatchedEntry = null;
+            var cursor = startCursor;
             foreach (var root in ChecklistParser.Roots(ChecklistItems))
             {
-                var cursor = 0L;
-                EvaluateChecklistNode(root, logEntries, ref cursor, ref markerAdded);
+                if (singleStep && consumedStep)
+                {
+                    break;
+                }
+
+                TryEvaluateChecklistNode(root, logEntries, ref cursor, ref markerAdded, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, startCursor);
             }
 
-            if (markerAdded)
+            if (lastMatchedEntry is not null)
+            {
+                _reviewedLineKey = lastMatchedEntry.LineKey;
+                OnPropertyChanged(nameof(HasReviewedMarker));
+                ApplyTimelineFilters();
+                SaveSettings();
+            }
+            else if (markerAdded)
             {
                 SaveSettings();
                 Dispatcher.BeginInvoke(ApplyTimelineFilters, DispatcherPriority.Background);
+            }
+
+            if (singleStep && !consumedStep)
+            {
+                StatusText = "No checklist step matched.";
             }
         }
         finally
@@ -1514,8 +1693,35 @@ ordered: Multiplayer smoke test
         }
     }
 
-    private bool EvaluateChecklistNode(ChecklistNode node, IReadOnlyList<TimelineEntry> entries, ref long cursor, ref bool markerAdded)
+    private bool TryEvaluateChecklistNode(
+        ChecklistNode node,
+        IReadOnlyList<TimelineEntry> entries,
+        ref long cursor,
+        ref bool markerAdded,
+        ref TimelineEntry? lastMatchedEntry,
+        bool singleStep,
+        ref bool consumedStep,
+        string reviewedBeforeKey,
+        long reviewedBeforeSortTicks)
     {
+        if (node.Type == ChecklistNodeType.Comment)
+        {
+            return true;
+        }
+
+        if (node.IsSkipped)
+        {
+            node.IsComplete = true;
+            node.StatusText = "Skipped";
+            cursor = Math.Max(cursor, node.MatchSortTicks);
+            return true;
+        }
+
+        if (singleStep && consumedStep && !node.IsComplete)
+        {
+            return false;
+        }
+
         switch (node.Type)
         {
             case ChecklistNodeType.Expect:
@@ -1540,10 +1746,14 @@ ordered: Multiplayer smoke test
                 }
 
                 node.IsComplete = true;
+                node.ReviewedBeforeLineKey = reviewedBeforeKey;
+                node.ReviewedBeforeSortTicks = reviewedBeforeSortTicks;
                 node.MatchLineKey = match.LineKey;
                 node.MatchSortTicks = match.SortTicks;
                 node.StatusText = match.DisplayTime;
                 cursor = match.SortTicks;
+                lastMatchedEntry = match;
+                consumedStep = true;
                 if (!string.IsNullOrWhiteSpace(node.InsertMarker))
                 {
                     markerAdded |= InsertMarkerInternal(node.InsertMarker, match, $"check:{node.Id}", applyNow: false);
@@ -1564,34 +1774,117 @@ ordered: Multiplayer smoke test
                 return false;
 
             case ChecklistNodeType.OrderedGroup:
-                node.IsActive = !node.IsComplete;
-                foreach (var child in node.Children)
-                {
-                    if (!EvaluateChecklistNode(child, entries, ref cursor, ref markerAdded))
-                    {
-                        break;
-                    }
-                }
-
-                node.IsComplete = node.Children.Count > 0 && node.Children.All(c => c.IsComplete);
-                node.StatusText = $"{node.Children.Count(c => c.IsComplete)}/{node.Children.Count}";
-                return node.IsComplete;
-
             case ChecklistNodeType.UnorderedGroup:
-                node.IsActive = !node.IsComplete;
-                foreach (var child in node.Children)
-                {
-                    var childCursor = cursor;
-                    EvaluateChecklistNode(child, entries, ref childCursor, ref markerAdded);
-                }
-
-                node.IsComplete = node.Children.Count > 0 && node.Children.All(c => c.IsComplete);
-                node.StatusText = $"{node.Children.Count(c => c.IsComplete)}/{node.Children.Count}";
-                return node.IsComplete;
+                return TryEvaluateChecklistGroup(node, entries, ref cursor, ref markerAdded, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, reviewedBeforeSortTicks);
 
             default:
                 return false;
         }
+    }
+
+    private bool TryEvaluateChecklistGroup(
+        ChecklistNode node,
+        IReadOnlyList<TimelineEntry> entries,
+        ref long cursor,
+        ref bool markerAdded,
+        ref TimelineEntry? lastMatchedEntry,
+        bool singleStep,
+        ref bool consumedStep,
+        string reviewedBeforeKey,
+        long reviewedBeforeSortTicks)
+    {
+        node.IsActive = !node.IsComplete;
+        if (node.IsComplete)
+        {
+            cursor = Math.Max(cursor, node.MatchSortTicks);
+            return true;
+        }
+
+        var children = node.Children.Where(child => child.Type != ChecklistNodeType.Comment).ToList();
+        var requiredMin = node.RequiredMin < 0 ? children.Count : Math.Min(node.RequiredMin, children.Count);
+        var requiredMax = node.RequiredMax < 0 ? children.Count : node.RequiredMax;
+        var completedBefore = children.Count(c => c.IsComplete);
+
+        if (node.IsOrdered)
+        {
+            foreach (var child in children)
+            {
+                if (requiredMax is not null && children.Count(c => c.IsComplete) >= requiredMax)
+                {
+                    break;
+                }
+
+                if (!TryEvaluateChecklistNode(child, entries, ref cursor, ref markerAdded, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, reviewedBeforeSortTicks))
+                {
+                    break;
+                }
+
+                if (singleStep && consumedStep)
+                {
+                    break;
+                }
+            }
+        }
+        else
+        {
+            var madeProgress = true;
+            while (madeProgress && (requiredMax is null || children.Count(c => c.IsComplete) < requiredMax))
+            {
+                madeProgress = false;
+                foreach (var child in children.Where(c => !c.IsComplete).ToList())
+                {
+                    var childCursor = cursor;
+                    if (TryEvaluateChecklistNode(child, entries, ref childCursor, ref markerAdded, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, reviewedBeforeSortTicks))
+                    {
+                        cursor = Math.Max(cursor, childCursor);
+                        madeProgress = true;
+                    }
+
+                    if (singleStep && consumedStep)
+                    {
+                        madeProgress = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        var completed = children.Count(c => c.IsComplete);
+        node.StatusText = $"{completed}/{children.Count}";
+        var isComplete = children.Count == 0
+            ? requiredMin == 0
+            : completed >= requiredMin && (requiredMax is null || completed <= requiredMax) &&
+              (node.RequiredMin >= 0 || completed == children.Count);
+        if (isComplete)
+        {
+            node.IsComplete = true;
+            node.ReviewedBeforeLineKey = reviewedBeforeKey;
+            node.ReviewedBeforeSortTicks = reviewedBeforeSortTicks;
+            node.MatchSortTicks = Math.Max(cursor, children.Select(c => c.MatchSortTicks).DefaultIfEmpty(cursor).Max());
+            node.MatchLineKey = lastMatchedEntry?.LineKey ?? string.Empty;
+            node.StatusText = "Done";
+            if (completed > completedBefore)
+            {
+                consumedStep = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(node.InsertMarker))
+            {
+                markerAdded |= InsertMarkerInternal(node.InsertMarker, lastMatchedEntry, $"check:{node.Id}", applyNow: false);
+            }
+        }
+
+        return node.IsComplete;
+    }
+
+    private long GetReviewedSortTicks()
+    {
+        if (string.IsNullOrWhiteSpace(_reviewedLineKey))
+        {
+            return 0L;
+        }
+
+        return TimelineEntries.FirstOrDefault(e => e.LineKey.Equals(_reviewedLineKey, StringComparison.OrdinalIgnoreCase))?.SortTicks ?? 0L;
     }
 
     private bool InsertMarkerInternal(string text, TimelineEntry? anchor, string markerKey, bool applyNow)

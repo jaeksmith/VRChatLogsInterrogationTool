@@ -549,13 +549,15 @@ public enum ChecklistNodeType
     UnorderedGroup,
     Action,
     Expect,
-    Marker
+    Marker,
+    Comment
 }
 
 public sealed class ChecklistNode : ObservableObject
 {
     private bool _isComplete;
     private bool _isActive;
+    private bool _isSkipped;
     private string _statusText = "Pending";
 
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -567,6 +569,12 @@ public sealed class ChecklistNode : ObservableObject
     public string InsertMarker { get; set; } = string.Empty;
     public string MatchLineKey { get; set; } = string.Empty;
     public long MatchSortTicks { get; set; }
+    public string ReviewedBeforeLineKey { get; set; } = string.Empty;
+    public long ReviewedBeforeSortTicks { get; set; }
+    public bool IsOrdered { get; set; }
+    public int RequiredMin { get; set; } = 1;
+    public int? RequiredMax { get; set; } = 1;
+    public string GroupSpecText { get; set; } = string.Empty;
     public ObservableCollection<ChecklistNode> Children { get; } = [];
 
     public bool IsComplete
@@ -594,6 +602,18 @@ public sealed class ChecklistNode : ObservableObject
         }
     }
 
+    public bool IsSkipped
+    {
+        get => _isSkipped;
+        set
+        {
+            if (SetProperty(ref _isSkipped, value))
+            {
+                OnPropertyChanged(nameof(StatusBrush));
+            }
+        }
+    }
+
     public string StatusText
     {
         get => _statusText;
@@ -604,13 +624,22 @@ public sealed class ChecklistNode : ObservableObject
     public bool IsManualEnabled => Type is ChecklistNodeType.Action or ChecklistNodeType.Marker;
 
     [JsonIgnore]
+    public bool IsComment => Type == ChecklistNodeType.Comment;
+
+    [JsonIgnore]
+    public Visibility CommentVisibility => IsComment ? Visibility.Visible : Visibility.Collapsed;
+
+    [JsonIgnore]
+    public Visibility NodeVisibility => IsComment ? Visibility.Collapsed : Visibility.Visible;
+
+    [JsonIgnore]
     public string TypeLabel => Type switch
     {
-        ChecklistNodeType.OrderedGroup => "ORDER",
-        ChecklistNodeType.UnorderedGroup => "ANY",
+        ChecklistNodeType.OrderedGroup or ChecklistNodeType.UnorderedGroup => string.IsNullOrWhiteSpace(GroupSpecText) ? "GROUP" : GroupSpecText,
         ChecklistNodeType.Action => "ACTION",
         ChecklistNodeType.Expect => "EXPECT",
         ChecklistNodeType.Marker => "MARK",
+        ChecklistNodeType.Comment => "#",
         _ => "ROOT"
     };
 
@@ -619,10 +648,15 @@ public sealed class ChecklistNode : ObservableObject
 
     [JsonIgnore]
     public SolidColorBrush StatusBrush => IsComplete
-        ? Palette.Brush("#64D68A")
+        ? IsSkipped
+            ? Palette.Brush("#9AA3AD")
+            : Palette.Brush("#64D68A")
         : IsActive
             ? Palette.Brush("#F4D35E")
             : Palette.Brush("#607080");
+
+    [JsonIgnore]
+    public SolidColorBrush TextBrush => IsComment ? Palette.Brush("#91A0AD") : Palette.Brush("#E8EEF4");
 }
 
 public sealed class SourceDirectoryState
