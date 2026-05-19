@@ -1568,7 +1568,7 @@ ordered: Multiplayer smoke test
         var alwaysShowByLevel = IsAlwaysShowLevel(entry.Severity);
         foreach (var (filter, regex) in activeFilters)
         {
-            if (FilterMatches(entry.FullText, filter, regex))
+            if (FilterMatches(entry.CopyText, filter, regex))
             {
                 entry.FilterBadges.Add(new FilterBadge { Name = filter.Name, Color = filter.Color });
             }
@@ -1785,7 +1785,7 @@ ordered: Multiplayer smoke test
                 }
 
                 var cursorSnapshot = cursor;
-                var match = entries.FirstOrDefault(e => e.SortTicks > cursorSnapshot && regex.IsMatch(e.FullText));
+                var match = entries.FirstOrDefault(e => e.SortTicks > cursorSnapshot && regex.IsMatch(e.CopyText));
                 if (match is null)
                 {
                     node.StatusText = "Watching";
@@ -2104,22 +2104,7 @@ ordered: Multiplayer smoke test
         var builder = new StringBuilder();
         foreach (var entry in entries.OrderBy(e => e.SortTicks).ThenBy(e => e.SourceToken).ThenBy(e => e.LineNumber))
         {
-            builder.Append('[')
-                .Append(entry.Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff"))
-                .Append("] [")
-                .Append(entry.DisplaySourceTag);
-
-            if (!entry.IsMarker)
-            {
-                builder.Append("] [")
-                    .Append(entry.DisplayFileTag);
-            }
-
-            builder.Append("] [")
-                .Append(entry.Severity)
-                .Append(']')
-                .Append(' ')
-                .AppendLine(entry.FullText);
+            builder.AppendLine(entry.CopyText);
         }
 
         return builder.ToString();
@@ -2141,11 +2126,11 @@ ordered: Multiplayer smoke test
             if (SearchUseRegex)
             {
                 var regex = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Compiled);
-                _searchMatches = TimelineEntries.Where(e => regex.IsMatch(e.FullText)).ToList();
+                _searchMatches = TimelineEntries.Where(e => regex.IsMatch(e.CopyText)).ToList();
             }
             else
             {
-                _searchMatches = TimelineEntries.Where(e => e.FullText.Contains(pattern, StringComparison.OrdinalIgnoreCase)).ToList();
+                _searchMatches = TimelineEntries.Where(e => e.CopyText.Contains(pattern, StringComparison.OrdinalIgnoreCase)).ToList();
             }
 
             SearchStatusText = $"{_searchMatches.Count:n0} matches";

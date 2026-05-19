@@ -32,6 +32,9 @@ try
     Require(entries.Count == 4, $"Expected 4 grouped entries, got {entries.Count}.");
     Require(entries[2].Severity == "Error", "Expected third entry to be Error.");
     Require(entries[2].ContinuationText.Contains("Example.Type.Method", StringComparison.Ordinal), "Expected stack trace continuation to be grouped.");
+    Require(entries[0].CopyText == "[2026-05-15 12:00:01.000] [T1] [Synthetic] [Debug] Boot line", "Expected copy text to include reformatted time plus source, log, and level tags.");
+    Require(entries[2].CopyText.Contains("[T1] [Synthetic] [Error] Synthetic exception", StringComparison.Ordinal), "Expected copy text to preserve the original message after tags.");
+    Require(entries[2].CopyText.Contains("Example.Type.Method", StringComparison.Ordinal), "Expected copy text to include multiline continuation text.");
 
     Console.WriteLine("Synthetic parser smoke test passed.");
 

@@ -19,11 +19,10 @@ ordered: Join smoke test
 
 Supported node types:
 
-- `ordered:` or `sequence:` creates a group whose children must complete in order.
-- `unordered:`, `any:`, or `group:` creates a group whose children may complete in any order.
-- `action:` or `step:` creates a manual human step.
-- `expect:`, `log:`, or `match:` creates a regex log observation.
-- `marker:` or `mark:` creates a manual marker step.
+- `all ordered:`, `ordered:`, `all unordered:`, `unordered:`, `all:`, `any:`, or `any(...):` creates a group.
+- `action:` creates a manual human step.
+- `expect:` creates a regex log observation.
+- `marker:` creates a manual marker step.
 - `title:` is accepted and ignored.
 
 Indentation controls nesting. Two spaces equals one level. Lines may also start with `- ` for list-like readability.
@@ -37,7 +36,27 @@ expect: /Udon.*Exception/
 expect: \[Behaviour\].*RPC
 ```
 
-Matching is case-insensitive in the initial implementation.
+Matching is case-insensitive.
+
+Expectation regexes match the same tagged line format that VLIT copies to the clipboard, not the raw line as it appeared in the VRChat log. The original message text is preserved at the end, while the timestamp and metadata are reformatted and prefixed:
+
+```text
+[yyyy-MM-dd HH:mm:ss.fff] [SourceTag] [LogFileTag] [Level] Message text and continuation text
+```
+
+For example, this raw VRChat log line:
+
+```text
+2026.05.19 02:18:53 Debug      -  [BoardBound] [InstanceRegistry] Start: slotCount=4 maxParts=32 isOwner=False isMaster=False local=2
+```
+
+is matched and copied as:
+
+```text
+[2026-05-19 02:18:53.000] [S1] [Client 2] [Debug] [BoardBound] [InstanceRegistry] Start: slotCount=4 maxParts=32 isOwner=False isMaster=False local=2
+```
+
+`SourceTag` and `LogFileTag` are user-editable labels, so scripts that match those tags should either set them deliberately before running or use flexible tag patterns such as `\[[^\]]+\]`.
 
 ## Marker Injection
 

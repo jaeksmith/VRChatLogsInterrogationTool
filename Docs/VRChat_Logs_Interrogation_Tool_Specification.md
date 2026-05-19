@@ -387,6 +387,7 @@ Filters act independently.
 
 Semantics:
 - OR behavior
+- text and regex patterns match the same tagged line format used by Copy
 
 If a line matches:
 - attach filter token/badge
@@ -441,6 +442,11 @@ Need ability to:
 ## Regex Search
 
 Provide regex-based search field.
+
+Search patterns match the same tagged line format used by Copy:
+- `[yyyy-MM-dd HH:mm:ss.fff] [SourceTag] [LogFileTag] [Level] message`
+- marker rows omit the log file tag
+- source and log file tags are user-editable
 
 ## Navigation Buttons
 
@@ -815,4 +821,3 @@ Not yet specified.
 
 ## Session Storage Format
 Not yet specified.
-

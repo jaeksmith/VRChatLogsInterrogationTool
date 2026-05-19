@@ -476,6 +476,18 @@ public sealed class TimelineEntry : ObservableObject
         : $"{Message}{Environment.NewLine}{ContinuationText}";
 
     [JsonIgnore]
+    public string CopyText
+    {
+        get
+        {
+            var sourceTags = IsMarker
+                ? $"[{DisplaySourceTag}]"
+                : $"[{DisplaySourceTag}] [{DisplayFileTag}]";
+            return $"[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] {sourceTags} [{Severity}] {FullText}";
+        }
+    }
+
+    [JsonIgnore]
     public bool HasContinuation => !string.IsNullOrWhiteSpace(ContinuationText);
 
     [JsonIgnore]
