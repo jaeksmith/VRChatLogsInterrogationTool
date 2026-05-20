@@ -1400,7 +1400,9 @@ ordered: Multiplayer smoke test
                             SourceId = source.Id,
                             SourceToken = source.Token,
                             SourceColor = source.Color,
-                            Alias = string.IsNullOrWhiteSpace(savedState?.Alias) ? $"Client {index + 1}" : savedState.Alias,
+                            Alias = string.IsNullOrWhiteSpace(savedState?.Alias)
+                                ? LogParser.FormatTimestampToken(start, $"Client {index + 1}")
+                                : savedState.Alias,
                             Color = savedState?.Color ?? Palette.At(index + 2),
                             IncludeInTimeline = includeByDefault,
                             IsVisible = showByDefault,

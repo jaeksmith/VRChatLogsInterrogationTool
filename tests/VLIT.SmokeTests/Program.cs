@@ -36,6 +36,7 @@ try
     Require(entries[2].CopyText.Contains("[T1] [Synthetic] [Error] Synthetic exception", StringComparison.Ordinal), "Expected copy text to preserve the original message after tags.");
     Require(entries[2].CopyText.Contains("Example.Type.Method", StringComparison.Ordinal), "Expected copy text to include multiline continuation text.");
     Require(entries[0].SourceStartTimestamp == item.StartTimestamp, "Expected entries to retain the source file start timestamp for deterministic ordering.");
+    Require(LogParser.FormatTimestampToken(LogParser.ParseStartTimestamp("output_log_2026-05-20_06-33-16.txt"), "Client 1") == "0520063316", "Expected default log-file token to use MMDDHHMMSS from the filename timestamp.");
 
     var tiedSort = new[]
     {

@@ -36,6 +36,13 @@ public static partial class LogParser
         }
     }
 
+    public static string FormatTimestampToken(DateTime timestamp, string fallback)
+    {
+        return timestamp == DateTime.MinValue
+            ? fallback
+            : timestamp.ToString("MMddHHmmss", CultureInfo.InvariantCulture);
+    }
+
     public static IReadOnlyList<TimelineEntry> ParseFile(LogFileItem file)
     {
         var entries = new List<TimelineEntry>(4096);
