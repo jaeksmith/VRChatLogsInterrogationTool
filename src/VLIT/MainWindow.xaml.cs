@@ -965,11 +965,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private ContextMenu BuildTimelineContextMenu(TimelineEntry entry)
     {
         var contextEntries = GetTimelineContextEntries(entry);
-        var anchor = contextEntries
-            .OrderBy(e => e.SortTicks)
-            .ThenBy(e => e.SourceToken)
-            .ThenBy(e => e.LineNumber)
-            .LastOrDefault() ?? entry;
+        var anchor = TimelineEntry.OrderForTimeline(contextEntries).LastOrDefault() ?? entry;
         var menu = new ContextMenu();
         var copy = new MenuItem { Header = contextEntries.Count == 1 ? "Copy selected line" : $"Copy {contextEntries.Count:n0} selected lines" };
         copy.Click += (_, _) => CopyEntries(contextEntries);
@@ -1525,12 +1521,7 @@ ordered: Multiplayer smoke test
             merged.AddRange(BuildMarkerEntries());
         }
 
-        var ordered = merged
-            .OrderBy(e => e.SortTicks)
-            .ThenBy(e => e.IsMarker ? 1 : 0)
-            .ThenBy(e => e.SourceToken)
-            .ThenBy(e => e.LineNumber)
-            .ToList();
+        var ordered = TimelineEntry.OrderForTimeline(merged).ToList();
 
         TimelineEntries.Clear();
         foreach (var entry in ordered)
@@ -1685,12 +1676,7 @@ ordered: Multiplayer smoke test
                 }
             }
 
-            var logEntries = TimelineEntries
-                .Where(e => !e.IsMarker)
-                .OrderBy(e => e.SortTicks)
-                .ThenBy(e => e.SourceToken)
-                .ThenBy(e => e.LineNumber)
-                .ToList();
+            var logEntries = TimelineEntry.OrderForTimeline(TimelineEntries.Where(e => !e.IsMarker)).ToList();
 
             var startCursor = GetReviewedSortTicks();
             var reviewedBeforeKey = _reviewedLineKey;
@@ -2102,7 +2088,7 @@ ordered: Multiplayer smoke test
     private string BuildClipboardText(IReadOnlyList<TimelineEntry> entries)
     {
         var builder = new StringBuilder();
-        foreach (var entry in entries.OrderBy(e => e.SortTicks).ThenBy(e => e.SourceToken).ThenBy(e => e.LineNumber))
+        foreach (var entry in TimelineEntry.OrderForTimeline(entries))
         {
             builder.AppendLine(entry.CopyText);
         }

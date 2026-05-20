@@ -35,6 +35,40 @@ try
     Require(entries[0].CopyText == "[2026-05-15 12:00:01.000] [T1] [Synthetic] [Debug] Boot line", "Expected copy text to include reformatted time plus source, log, and level tags.");
     Require(entries[2].CopyText.Contains("[T1] [Synthetic] [Error] Synthetic exception", StringComparison.Ordinal), "Expected copy text to preserve the original message after tags.");
     Require(entries[2].CopyText.Contains("Example.Type.Method", StringComparison.Ordinal), "Expected copy text to include multiline continuation text.");
+    Require(entries[0].SourceStartTimestamp == item.StartTimestamp, "Expected entries to retain the source file start timestamp for deterministic ordering.");
+
+    var tiedSort = new[]
+    {
+        new TimelineEntry
+        {
+            LineKey = "late:1",
+            SourceFileKey = "late",
+            SourceToken = "S1",
+            FileAlias = "Late",
+            FileName = "late.txt",
+            SourceStartTimestamp = new DateTime(2026, 5, 15, 12, 1, 0),
+            Timestamp = entries[0].Timestamp,
+            SortTicks = entries[0].SortTicks,
+            Sequence = 0,
+            LineNumber = 1,
+            Message = "late"
+        },
+        new TimelineEntry
+        {
+            LineKey = "early:1",
+            SourceFileKey = "early",
+            SourceToken = "S1",
+            FileAlias = "Early",
+            FileName = "early.txt",
+            SourceStartTimestamp = new DateTime(2026, 5, 15, 12, 0, 0),
+            Timestamp = entries[0].Timestamp,
+            SortTicks = entries[0].SortTicks,
+            Sequence = 0,
+            LineNumber = 1,
+            Message = "early"
+        }
+    };
+    Require(TimelineEntry.OrderForTimeline(tiedSort).First().LineKey == "early:1", "Expected tied entries to order by earlier source file timestamp first.");
 
     Console.WriteLine("Synthetic parser smoke test passed.");
 

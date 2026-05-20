@@ -127,6 +127,7 @@ public static partial class LogParser
             SourceToken = file.SourceToken,
             FileAlias = sourceAlias,
             FileName = file.FileName,
+            SourceStartTimestamp = file.StartTimestamp,
             Timestamp = pending.Timestamp,
             Sequence = sequence,
             LineNumber = pending.LineNumber,

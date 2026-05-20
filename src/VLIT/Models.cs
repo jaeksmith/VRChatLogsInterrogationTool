@@ -401,6 +401,7 @@ public sealed class TimelineEntry : ObservableObject
     public string SourceToken { get; init; } = string.Empty;
     public string FileAlias { get; init; } = string.Empty;
     public string FileName { get; init; } = string.Empty;
+    public DateTime SourceStartTimestamp { get; init; }
     public DateTime Timestamp { get; init; }
     public long SortTicks { get; init; }
     public int Sequence { get; init; }
@@ -412,6 +413,19 @@ public sealed class TimelineEntry : ObservableObject
     public string FileColor { get; init; } = "#4CC9F0";
     public bool IsMarker { get; init; }
     public bool IsReviewMarker { get; init; }
+
+    public static IOrderedEnumerable<TimelineEntry> OrderForTimeline(IEnumerable<TimelineEntry> entries)
+    {
+        return entries
+            .OrderBy(e => e.SortTicks)
+            .ThenBy(e => e.IsMarker ? 1 : 0)
+            .ThenBy(e => e.SourceStartTimestamp)
+            .ThenBy(e => e.SourceToken, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(e => e.SourceFileKey, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(e => e.LineNumber)
+            .ThenBy(e => e.Sequence)
+            .ThenBy(e => e.LineKey, StringComparer.OrdinalIgnoreCase);
+    }
 
     public ObservableCollection<FilterBadge> FilterBadges
     {
