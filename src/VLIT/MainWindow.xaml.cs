@@ -379,8 +379,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (!IsControlDown() || IsTextInputFocused())
+        if (!IsControlDown())
         {
+            return;
+        }
+
+        if (GetFocusedTextInput() is { } textInput)
+        {
+            if (HandleTextInputShortcut(textInput, e.Key))
+            {
+                e.Handled = true;
+            }
+
             return;
         }
 
@@ -685,7 +695,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         var filter = new RegexFilterItem
         {
-            Name = $"Search {Filters.Count + 1}",
+            Name = $"Filter {Filters.Count + 1}",
             Pattern = pattern,
             Color = Palette.At(Filters.Count + 5),
             IsEnabled = true,
@@ -701,6 +711,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void CopySelected_Click(object sender, RoutedEventArgs e)
     {
         CopyEntries(CheckedOrSelectedTimelineEntries());
+    }
+
+    private void QueueCopyEntries(IReadOnlyList<TimelineEntry> entries)
+    {
+        var snapshot = entries.ToList();
+        Dispatcher.BeginInvoke(() => CopyEntries(snapshot), DispatcherPriority.Background);
     }
 
     private void CopyEntries(IReadOnlyList<TimelineEntry> entries)
@@ -727,10 +743,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             try
             {
-                Clipboard.SetText(text);
+                Clipboard.SetDataObject(text, false);
                 return true;
             }
             catch (ExternalException ex)
+            {
+                error = ex.Message;
+                Thread.Sleep(40);
+            }
+            catch (InvalidOperationException ex)
             {
                 error = ex.Message;
                 Thread.Sleep(40);
@@ -995,7 +1016,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var anchor = TimelineEntry.OrderForTimeline(contextEntries).LastOrDefault() ?? entry;
         var menu = new ContextMenu();
         var copy = new MenuItem { Header = contextEntries.Count == 1 ? "Copy selected line" : $"Copy {contextEntries.Count:n0} selected lines" };
-        copy.Click += (_, _) => CopyEntries(contextEntries);
+        copy.Click += (_, _) => QueueCopyEntries(contextEntries);
         var hide = new MenuItem { Header = contextEntries.Count == 1 ? "Hide selected line" : $"Hide {contextEntries.Count:n0} selected lines" };
         hide.Click += (_, _) => HideEntries(contextEntries);
         var marker = new MenuItem { Header = contextEntries.Count == 1 ? "Insert marker after this line" : "Insert marker after last selected line" };
@@ -1093,10 +1114,35 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return Keyboard.IsKeyDown(Key.LeftShift) || Keyboard.IsKeyDown(Key.RightShift);
     }
 
-    private static bool IsTextInputFocused()
+    private static TextBoxBase? GetFocusedTextInput()
     {
-        return Keyboard.FocusedElement is DependencyObject focused &&
-            FindAncestor<TextBoxBase>(focused) is not null;
+        if (Keyboard.FocusedElement is DependencyObject focused)
+        {
+            return focused as TextBoxBase ?? FindAncestor<TextBoxBase>(focused);
+        }
+
+        return null;
+    }
+
+    private static bool HandleTextInputShortcut(TextBoxBase textInput, Key key)
+    {
+        switch (key)
+        {
+            case Key.A:
+                textInput.SelectAll();
+                return true;
+            case Key.C:
+                textInput.Copy();
+                return true;
+            case Key.X when !textInput.IsReadOnly:
+                textInput.Cut();
+                return true;
+            case Key.V when !textInput.IsReadOnly:
+                textInput.Paste();
+                return true;
+            default:
+                return false;
+        }
     }
 
     private void ToggleSources_Click(object sender, RoutedEventArgs e)
@@ -1896,16 +1942,16 @@ ordered: Multiplayer smoke test
         }
         else
         {
+            var groupStartCursor = cursor;
             var madeProgress = true;
             while (madeProgress && (requiredMax is null || children.Count(c => c.IsComplete) < requiredMax))
             {
                 madeProgress = false;
                 foreach (var child in children.Where(c => !c.IsComplete).ToList())
                 {
-                    var childCursor = cursor;
+                    var childCursor = groupStartCursor;
                     if (TryEvaluateChecklistNode(child, entries, ref childCursor, ref markerAdded, ref reviewedAdvancedByMarker, ref lastMatchedEntry, singleStep, ref consumedStep, reviewedBeforeKey, reviewedBeforeSortTicks))
                     {
-                        cursor = Math.Max(cursor, childCursor);
                         madeProgress = true;
                     }
 
@@ -1929,8 +1975,18 @@ ordered: Multiplayer smoke test
             node.IsComplete = true;
             node.ReviewedBeforeLineKey = reviewedBeforeKey;
             node.ReviewedBeforeSortTicks = reviewedBeforeSortTicks;
-            node.MatchSortTicks = Math.Max(cursor, children.Select(c => c.MatchSortTicks).DefaultIfEmpty(cursor).Max());
-            node.MatchLineKey = lastMatchedEntry?.LineKey ?? string.Empty;
+            var latestChild = children
+                .Where(c => c.IsComplete)
+                .OrderBy(c => c.MatchSortTicks)
+                .LastOrDefault();
+            node.MatchSortTicks = Math.Max(cursor, latestChild?.MatchSortTicks ?? cursor);
+            node.MatchLineKey = latestChild?.MatchLineKey ?? lastMatchedEntry?.LineKey ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(node.MatchLineKey))
+            {
+                lastMatchedEntry = entries.FirstOrDefault(e => e.LineKey.Equals(node.MatchLineKey, StringComparison.OrdinalIgnoreCase)) ?? lastMatchedEntry;
+            }
+
+            cursor = Math.Max(cursor, node.MatchSortTicks);
             node.StatusText = "Done";
             if (completed > completedBefore)
             {
