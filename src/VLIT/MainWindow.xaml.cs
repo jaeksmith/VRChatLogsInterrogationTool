@@ -2,8 +2,10 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -709,8 +711,33 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        Clipboard.SetText(BuildClipboardText(entries));
+        if (!TrySetClipboardText(BuildClipboardText(entries), out var error))
+        {
+            StatusText = $"Clipboard busy; copy failed after retry: {error}";
+            return;
+        }
+
         StatusText = $"Copied {entries.Count:n0} entries.";
+    }
+
+    private static bool TrySetClipboardText(string text, out string error)
+    {
+        error = string.Empty;
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                return true;
+            }
+            catch (ExternalException ex)
+            {
+                error = ex.Message;
+                Thread.Sleep(40);
+            }
+        }
+
+        return false;
     }
 
     private void HideSelected_Click(object sender, RoutedEventArgs e)
