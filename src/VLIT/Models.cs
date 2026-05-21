@@ -409,6 +409,7 @@ public sealed class TimelineEntry : ObservableObject
     public string Severity { get; init; } = "Info";
     public string Message { get; init; } = string.Empty;
     public string ContinuationText { get; init; } = string.Empty;
+    public string InferredFileAlias { get; set; } = string.Empty;
     public string SourceColor { get; init; } = "#4CC9F0";
     public string FileColor { get; init; } = "#4CC9F0";
     public bool IsMarker { get; init; }
@@ -490,15 +491,29 @@ public sealed class TimelineEntry : ObservableObject
         : $"{Message}{Environment.NewLine}{ContinuationText}";
 
     [JsonIgnore]
-    public string CopyText
+    public string CopyText => BuildCopyText(FileAlias);
+
+    [JsonIgnore]
+    public IEnumerable<string> ChecklistMatchTexts
     {
         get
         {
-            var sourceTags = IsMarker
-                ? $"[{DisplaySourceTag}]"
-                : $"[{DisplaySourceTag}] [{DisplayFileTag}]";
-            return $"[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] {sourceTags} [{Severity}] {FullText}";
+            yield return CopyText;
+            if (!IsMarker &&
+                !string.IsNullOrWhiteSpace(InferredFileAlias) &&
+                !InferredFileAlias.Equals(FileAlias, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return BuildCopyText(InferredFileAlias);
+            }
         }
+    }
+
+    private string BuildCopyText(string fileAlias)
+    {
+        var sourceTags = IsMarker
+            ? $"[{DisplaySourceTag}]"
+            : $"[{DisplaySourceTag}] [{fileAlias}]";
+        return $"[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] {sourceTags} [{Severity}] {FullText}";
     }
 
     [JsonIgnore]

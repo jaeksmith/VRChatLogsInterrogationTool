@@ -1,5 +1,6 @@
 using VLIT;
 using VLIT.Services;
+using System.Text.RegularExpressions;
 
 var tempDir = Path.Combine(Path.GetTempPath(), "vlit-smoke-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(tempDir);
@@ -9,6 +10,9 @@ try
     var syntheticLog = Path.Combine(tempDir, "output_log_2026-05-15_12-00-00.txt");
     File.WriteAllText(syntheticLog, """
 2026.05.15 12:00:01 Debug      -  Boot line
+2026.05.15 12:00:01 Debug      -  [BoardBound] [InstanceRegistry] Start: slotCount=4 maxParts=32 isOwner=True isMaster=True local=1
+2026.05.15 12:00:01 Debug      -  [BoardBound] [InstanceRegistry] PushSnapshot: slot=0 instance=1 version=1 hash=1940548526 admins=0 participants=1
+2026.05.15 12:00:01 Debug      -  [BoardBound] [DebugTrigger] CreateInstance(local=1) -> instanceId=1
 2026.05.15 12:00:02 Warning    -  Something notable
 2026.05.15 12:00:03 Error      -  Synthetic exception
   at Example.Type.Method () [0x00000] in <00000000000000000000000000000000>:0
@@ -29,13 +33,16 @@ try
     };
 
     var entries = LogParser.ParseFile(item).ToList();
-    Require(entries.Count == 4, $"Expected 4 grouped entries, got {entries.Count}.");
-    Require(entries[2].Severity == "Error", "Expected third entry to be Error.");
-    Require(entries[2].ContinuationText.Contains("Example.Type.Method", StringComparison.Ordinal), "Expected stack trace continuation to be grouped.");
+    Require(entries.Count == 7, $"Expected 7 grouped entries, got {entries.Count}.");
+    Require(entries[5].Severity == "Error", "Expected sixth entry to be Error.");
+    Require(entries[5].ContinuationText.Contains("Example.Type.Method", StringComparison.Ordinal), "Expected stack trace continuation to be grouped.");
     Require(entries[0].CopyText == "[2026-05-15 12:00:01.000] [T1] [Synthetic] [Debug] Boot line", "Expected copy text to include reformatted time plus source, log, and level tags.");
-    Require(entries[2].CopyText.Contains("[T1] [Synthetic] [Error] Synthetic exception", StringComparison.Ordinal), "Expected copy text to preserve the original message after tags.");
-    Require(entries[2].CopyText.Contains("Example.Type.Method", StringComparison.Ordinal), "Expected copy text to include multiline continuation text.");
+    Require(entries[5].CopyText.Contains("[T1] [Synthetic] [Error] Synthetic exception", StringComparison.Ordinal), "Expected copy text to preserve the original message after tags.");
+    Require(entries[5].CopyText.Contains("Example.Type.Method", StringComparison.Ordinal), "Expected copy text to include multiline continuation text.");
     Require(entries[0].SourceStartTimestamp == item.StartTimestamp, "Expected entries to retain the source file start timestamp for deterministic ordering.");
+    Require(entries.All(e => e.InferredFileAlias == "Client 1"), "Expected parser to infer Client 1 alias from local=1 for checklist compatibility.");
+    Require(entries[2].ChecklistMatchTexts.Any(text => text.Contains("[T1] [Client 1] [Debug] [BoardBound] [InstanceRegistry] PushSnapshot", StringComparison.Ordinal)), "Expected checklist match text to expose inferred Client 1 tag while copy text keeps the displayed tag.");
+    Require(entries[2].ChecklistMatchTexts.Any(text => Regex.IsMatch(text, @"\[Client 1\] .* \[BoardBound\] \[InstanceRegistry\] PushSnapshot: slot=0 instance=1 version=1 .*admins=0 participants=1", RegexOptions.IgnoreCase)), "Expected legacy Client 1 checklist regex to match inferred alias text.");
     Require(LogParser.FormatTimestampToken(LogParser.ParseStartTimestamp("output_log_2026-05-20_06-33-16.txt"), "Client 1") == "0520063316", "Expected default log-file token to use MMDDHHMMSS from the filename timestamp.");
 
     var tiedSort = new[]
