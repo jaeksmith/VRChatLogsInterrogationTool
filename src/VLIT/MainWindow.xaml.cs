@@ -1846,7 +1846,7 @@ ordered: Multiplayer smoke test
                 }
 
                 var cursorSnapshot = cursor;
-                var match = entries.FirstOrDefault(e => e.SortTicks > cursorSnapshot && ChecklistEntryMatches(regex, e));
+                var match = entries.FirstOrDefault(e => e.SortTicks > cursorSnapshot && regex.IsMatch(e.CopyText));
                 if (match is null)
                 {
                     node.StatusText = "Watching";
@@ -2006,11 +2006,6 @@ ordered: Multiplayer smoke test
         }
 
         return node.IsComplete;
-    }
-
-    private static bool ChecklistEntryMatches(Regex regex, TimelineEntry entry)
-    {
-        return entry.ChecklistMatchTexts.Any(regex.IsMatch);
     }
 
     private long GetReviewedSortTicks()

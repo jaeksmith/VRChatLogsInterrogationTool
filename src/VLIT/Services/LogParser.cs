@@ -17,10 +17,6 @@ public static partial class LogParser
         @"^(?<stamp>\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2})\s+(?<severity>\S+)\s+-\s{0,2}(?<message>.*)$",
         RegexOptions.Compiled);
 
-    private static readonly Regex LocalClientRegex = new(
-        @"(?:^|[^\w])local=(?<client>\d+)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
     public static DateTime ParseStartTimestamp(string filePath)
     {
         var match = FileTimestampRegex.Match(Path.GetFileName(filePath));
@@ -103,7 +99,6 @@ public static partial class LogParser
         }
 
         FlushPending(entries, file, pending, sequence);
-        ApplyInferredClientAlias(entries);
         return entries;
     }
 
@@ -150,25 +145,6 @@ public static partial class LogParser
             FileColor = file.Color,
             SortTicks = pending.Timestamp.Ticks + (sequence * SortStrideTicks)
         });
-    }
-
-    private static void ApplyInferredClientAlias(List<TimelineEntry> entries)
-    {
-        var client = entries
-            .Select(entry => LocalClientRegex.Match(entry.FullText))
-            .FirstOrDefault(match => match.Success)?
-            .Groups["client"]
-            .Value;
-        if (string.IsNullOrWhiteSpace(client))
-        {
-            return;
-        }
-
-        var alias = $"Client {client}";
-        foreach (var entry in entries)
-        {
-            entry.InferredFileAlias = alias;
-        }
     }
 
     private sealed class PendingEntry
