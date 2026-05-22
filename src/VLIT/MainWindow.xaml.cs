@@ -628,8 +628,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void CopyLogFilePath(LogFileItem logFile)
     {
-        var path = Path.GetFullPath(logFile.FilePath);
-        if (!TrySetClipboardText(path, out var error))
+        var text = $"[{logFile.DisplayName}] {Path.GetFullPath(logFile.FilePath)}";
+        if (!TrySetClipboardText(text, out var error))
         {
             StatusText = $"Clipboard busy; copy path failed after retry: {error}";
             return;
