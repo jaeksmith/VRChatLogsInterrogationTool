@@ -309,6 +309,7 @@ public sealed class RegexFilterItem : ObservableObject
     private string _color = Palette.At(0);
     private bool _isEnabled = true;
     private bool _isRegex;
+    private bool _isHide;
     private bool _isValid = true;
     private string _errorText = string.Empty;
 
@@ -354,6 +355,18 @@ public sealed class RegexFilterItem : ObservableObject
         set => SetProperty(ref _isRegex, value);
     }
 
+    public bool IsHide
+    {
+        get => _isHide;
+        set
+        {
+            if (SetProperty(ref _isHide, value))
+            {
+                OnPropertyChanged(nameof(ActionText));
+            }
+        }
+    }
+
     public bool IsValid
     {
         get => _isValid;
@@ -377,6 +390,9 @@ public sealed class RegexFilterItem : ObservableObject
 
     [JsonIgnore]
     public string ValidityText => IsValid ? "OK" : "Invalid";
+
+    [JsonIgnore]
+    public string ActionText => IsHide ? "Hide" : "Show";
 }
 
 public sealed class FilterBadge
@@ -718,6 +734,7 @@ public sealed class FilterState
     public string Color { get; set; } = Palette.At(0);
     public bool IsEnabled { get; set; } = true;
     public bool IsRegex { get; set; }
+    public bool IsHide { get; set; }
 }
 
 public sealed class AppSettingsState

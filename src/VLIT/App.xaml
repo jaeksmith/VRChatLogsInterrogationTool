@@ -32,6 +32,15 @@
             <Setter Property="BorderBrush" Value="{StaticResource BorderSubtle}" />
             <Setter Property="Padding" Value="8,4" />
             <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Opacity" Value="1" />
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+                    <Setter Property="Background" Value="{StaticResource PanelBg2}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource BorderSubtle}" />
+                    <Setter Property="Opacity" Value="0.72" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
 
         <Style TargetType="ToolTip">

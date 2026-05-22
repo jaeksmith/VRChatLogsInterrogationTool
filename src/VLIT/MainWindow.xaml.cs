@@ -312,7 +312,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                     Pattern = filterState.Pattern,
                     Color = filterState.Color,
                     IsEnabled = filterState.IsEnabled,
-                    IsRegex = filterState.IsRegex
+                    IsRegex = filterState.IsRegex,
+                    IsHide = filterState.IsHide
                 };
                 WireFilter(filter);
                 Filters.Add(filter);
@@ -550,6 +551,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         filter.Color = NextPaletteColor(filter.Color);
+    }
+
+    private void ToggleFilterAction_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not RegexFilterItem filter)
+        {
+            return;
+        }
+
+        filter.IsHide = !filter.IsHide;
     }
 
     private async void DeleteSelectedLogs_Click(object sender, RoutedEventArgs e)
@@ -938,6 +949,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        if (e.ClickCount >= 2)
+        {
+            _isDraggingTimelineSelection = false;
+            _dragStartEntry = null;
+            Mouse.Capture(null);
+            TimelineList.SelectedItem = entry;
+            MarkReviewed(entry);
+            e.Handled = true;
+            return;
+        }
+
         if (IsShiftDown())
         {
             var preserveExisting = IsControlDown() || !_lastSelectionValue;
@@ -980,6 +1002,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _isDraggingTimelineSelection = false;
         _dragStartEntry = null;
         Mouse.Capture(null);
+    }
+
+    private void TimelineRow_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (FindAncestor<ButtonBase>(e.OriginalSource as DependencyObject) is not null ||
+            FindAncestor<TextBoxBase>(e.OriginalSource as DependencyObject) is not null)
+        {
+            return;
+        }
+
+        if (GetTimelineEntryFromSender(sender) is { } entry)
+        {
+            MarkReviewed(entry);
+            e.Handled = true;
+        }
     }
 
     private void ExpandToggle_Click(object sender, RoutedEventArgs e)
@@ -1647,16 +1684,17 @@ ordered: Multiplayer smoke test
             return false;
         }
 
-        var alwaysShowByLevel = IsAlwaysShowLevel(entry.Severity);
+        var shouldShow = IsAlwaysShowLevel(entry.Severity) || ShowUnfilteredLines;
         foreach (var (filter, regex) in activeFilters)
         {
             if (FilterMatches(entry.CopyText, filter, regex))
             {
                 entry.FilterBadges.Add(new FilterBadge { Name = filter.Name, Color = filter.Color });
+                shouldShow = !filter.IsHide;
             }
         }
 
-        return entry.FilterBadges.Count > 0 || alwaysShowByLevel || ShowUnfilteredLines;
+        return shouldShow;
     }
 
     private List<TimelineEntry> BuildMarkerEntries()
@@ -2547,7 +2585,8 @@ ordered: Multiplayer smoke test
                     Pattern = f.Pattern,
                     Color = f.Color,
                     IsEnabled = f.IsEnabled,
-                    IsRegex = f.IsRegex
+                    IsRegex = f.IsRegex,
+                    IsHide = f.IsHide
                 }).ToList(),
                 Markers = _markers.ToList(),
                 HiddenLineKeys = new HashSet<string>(_hiddenLineKeys, StringComparer.OrdinalIgnoreCase),

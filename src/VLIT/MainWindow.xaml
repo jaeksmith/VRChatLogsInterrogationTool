@@ -72,6 +72,7 @@
                         <ColumnDefinition Width="92" />
                         <ColumnDefinition Width="220" />
                         <ColumnDefinition Width="58" />
+                        <ColumnDefinition Width="58" />
                         <ColumnDefinition Width="30" />
                     </Grid.ColumnDefinitions>
                     <CheckBox IsChecked="{Binding IsEnabled, UpdateSourceTrigger=PropertyChanged}" ToolTip="Enable filter" />
@@ -81,7 +82,8 @@
                     <TextBox Grid.Column="2" Margin="4,0" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" ToolTip="Filter name" />
                     <TextBox Grid.Column="3" Margin="4,0" Text="{Binding Pattern, UpdateSourceTrigger=PropertyChanged}" ToolTip="{Binding ErrorText}" />
                     <CheckBox Grid.Column="4" Content="Regex" IsChecked="{Binding IsRegex, UpdateSourceTrigger=PropertyChanged}" Margin="4,0" ToolTip="Treat pattern as a regular expression" />
-                    <Button Grid.Column="5" Content="X" Tag="{Binding}" Click="RemoveFilter_Click" ToolTip="Remove filter" />
+                    <Button Grid.Column="5" Content="{Binding ActionText}" Tag="{Binding}" Click="ToggleFilterAction_Click" ToolTip="Toggle whether matching rows are shown or hidden" />
+                    <Button Grid.Column="6" Content="X" Tag="{Binding}" Click="RemoveFilter_Click" ToolTip="Remove filter" />
                 </Grid>
             </Border>
         </DataTemplate>
@@ -281,6 +283,7 @@
                             <EventSetter Event="PreviewMouseLeftButtonDown" Handler="TimelineRow_MouseDown" />
                             <EventSetter Event="PreviewMouseLeftButtonUp" Handler="TimelineRow_MouseUp" />
                             <EventSetter Event="MouseEnter" Handler="TimelineRow_MouseEnter" />
+                            <EventSetter Event="MouseDoubleClick" Handler="TimelineRow_MouseDoubleClick" />
                             <EventSetter Event="PreviewMouseRightButtonDown" Handler="TimelineRow_PreviewMouseRightButtonDown" />
                         </Style>
                     </ListBox.ItemContainerStyle>
