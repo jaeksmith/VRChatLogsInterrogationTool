@@ -610,16 +610,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         item.Focus();
-        item.ContextMenu = BuildLogFileContextMenu();
+        item.ContextMenu = BuildLogFileContextMenu(logFile);
     }
 
-    private ContextMenu BuildLogFileContextMenu()
+    private ContextMenu BuildLogFileContextMenu(LogFileItem logFile)
     {
         var menu = new ContextMenu();
+        var copyPath = new MenuItem { Header = "Copy path" };
+        copyPath.Click += (_, _) => CopyLogFilePath(logFile);
         var delete = new MenuItem { Header = "Delete selected log file(s)" };
         delete.Click += DeleteSelectedLogs_Click;
+        menu.Items.Add(copyPath);
+        menu.Items.Add(new Separator());
         menu.Items.Add(delete);
         return menu;
+    }
+
+    private void CopyLogFilePath(LogFileItem logFile)
+    {
+        var path = Path.GetFullPath(logFile.FilePath);
+        if (!TrySetClipboardText(path, out var error))
+        {
+            StatusText = $"Clipboard busy; copy path failed after retry: {error}";
+            return;
+        }
+
+        StatusText = $"Copied path for {logFile.FileName}.";
     }
 
     private void AddFilter_Click(object sender, RoutedEventArgs e)
@@ -2308,12 +2324,54 @@ ordered: Multiplayer smoke test
 
     private void ReplaceLogFiles(IReadOnlyList<LogFileItem> next)
     {
-        LogFiles.Clear();
-        foreach (var item in next)
+        var nextKeys = next
+            .Select(f => f.FileKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        for (var index = LogFiles.Count - 1; index >= 0; index--)
         {
-            WireLogFile(item);
-            LogFiles.Add(item);
+            if (!nextKeys.Contains(LogFiles[index].FileKey))
+            {
+                LogFiles.RemoveAt(index);
+            }
         }
+
+        for (var targetIndex = 0; targetIndex < next.Count; targetIndex++)
+        {
+            var item = next[targetIndex];
+            var currentIndex = IndexOfLogFile(item.FileKey);
+            if (currentIndex < 0)
+            {
+                WireLogFile(item);
+                LogFiles.Insert(targetIndex, item);
+                continue;
+            }
+
+            if (!ReferenceEquals(LogFiles[currentIndex], item))
+            {
+                WireLogFile(item);
+                LogFiles[currentIndex] = item;
+            }
+
+            currentIndex = IndexOfLogFile(item.FileKey);
+            if (currentIndex >= 0 && currentIndex != targetIndex)
+            {
+                LogFiles.Move(currentIndex, targetIndex);
+            }
+        }
+    }
+
+    private int IndexOfLogFile(string fileKey)
+    {
+        for (var index = 0; index < LogFiles.Count; index++)
+        {
+            if (LogFiles[index].FileKey.Equals(fileKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     private void Sources_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
