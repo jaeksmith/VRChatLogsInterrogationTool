@@ -38,6 +38,8 @@ expect: \[Behaviour\].*RPC
 
 Matching is case-insensitive.
 
+Expectation regexes use normal regex substring matching. A pattern may match any portion of the copied/tagged line. Use `^` and `$` when a script intentionally requires the whole line to match.
+
 Expectation regexes match the same tagged line format that VLIT copies to the clipboard, not the raw line as it appeared in the VRChat log. The original message text is preserved at the end, while the timestamp and metadata are reformatted and prefixed:
 
 ```text

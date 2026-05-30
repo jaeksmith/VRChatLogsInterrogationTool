@@ -87,6 +87,12 @@ any(1-2): Optional warnings
     Require(ordered.IsOrdered && ordered.RequiredMin == -1, "Expected 'all ordered' group spec.");
     var ranged = checklist.First(n => n.Text == "Optional warnings");
     Require(!ranged.IsOrdered && ranged.RequiredMin == 1 && ranged.RequiredMax == 2, "Expected 'any(1-2)' group spec.");
+    var partialExpect = ChecklistParser.Parse("expect: /Boot/").First(n => n.Type == ChecklistNodeType.Expect);
+    Require(ChecklistParser.TryCompile(partialExpect, out var partialRegex) && partialRegex is not null, "Expected partial expect regex to compile.");
+    Require(partialRegex!.IsMatch(entries[0].CopyText), "Expected expect regex to match a substring of the copied line.");
+    var anchoredExpect = ChecklistParser.Parse("expect: /^Boot$/").First(n => n.Type == ChecklistNodeType.Expect);
+    Require(ChecklistParser.TryCompile(anchoredExpect, out var anchoredRegex) && anchoredRegex is not null, "Expected anchored expect regex to compile.");
+    Require(!anchoredRegex!.IsMatch(entries[0].CopyText), "Expected ^ and $ anchors to require the full copied line.");
 
     Console.WriteLine("Checklist parser smoke test passed.");
 
